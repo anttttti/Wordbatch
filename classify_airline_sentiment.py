@@ -43,20 +43,20 @@ if __name__ == "__main__":
 
     import wordhash_regressor
     print "Train wordhash regressor"
-    #wordhash_regressor= wordhash_regressor.WordhashRegressor("wordhash_model.pkl.gz", tripadvisor_dir)
-    wordhash_regressor= wordhash_regressor.WordhashRegressor("wordhash_model.pkl.gz")
+    wordhash_regressor= wordhash_regressor.WordhashRegressor("wordhash_model.pkl.gz", tripadvisor_dir)
+    #wordhash_regressor= wordhash_regressor.WordhashRegressor("wordhash_model.pkl.gz")
     df['wordhash_score']= wordhash_regressor.predict(df['text'].values)
 
     import wordseq_regressor
     print "Train wordseq regressor"
-    #wordseq_regressor= wordseq_regressor.WordseqRegressor("wordseq_model.neo", tripadvisor_dir)
-    wordseq_regressor= wordseq_regressor.WordseqRegressor("wordseq_model.neo")
+    wordseq_regressor= wordseq_regressor.WordseqRegressor("wordseq_model.neo", tripadvisor_dir)
+    #wordseq_regressor= wordseq_regressor.WordseqRegressor("wordseq_model.neo")
     df['wordseq_score']= wordseq_regressor.predict_batch(df['text'].values)
 
     import wordvec_regressor
     print "Train wordvec regressor"
-    #wordvec_regressor= wordvec_regressor.WordvecRegressor("wordseq_model.pkl.gz", tripadvisor_dir)
-    wordvec_regressor= wordvec_regressor.WordvecRegressor("wordseq_model.pkl.gz")
+    wordvec_regressor= wordvec_regressor.WordvecRegressor("wordseq_model.pkl.gz", tripadvisor_dir)
+    #wordvec_regressor= wordvec_regressor.WordvecRegressor("wordseq_model.pkl.gz")
     df['wordvec_score'] = wordvec_regressor.predict(df['text'].values)
 
     df['tweet_len']= df['text'].map(lambda x: log(1+len(x)))
@@ -64,7 +64,7 @@ if __name__ == "__main__":
 
     full_preds= np.zeros(df.shape[0])
     columns_pick= ['tweet_len', 'tweet_wordcount', 'wordbag_score', 'wordhash_score', 'wordseq_score', 'wordvec_score',
-                   'textblob_score'] #0.297349788409
+                   'textblob_score']
 
     kf= KFold(df.shape[0], n_folds=10, shuffle=True, random_state=0)
     for train_index, dev_index in kf:
@@ -73,7 +73,7 @@ if __name__ == "__main__":
         clf= RandomForestRegressor(n_estimators=200, criterion='mse', max_depth=None, min_samples_split=5,
                                    min_samples_leaf=2, min_weight_fraction_leaf=0.0, max_features='auto',
                                    max_leaf_nodes=None, bootstrap=True, oob_score=False, n_jobs=8, random_state=0,
-                                   verbose=0, warm_start=False) #Mean Squared Error: 0.25858248166 Mean Error: 0.371840065061
+                                   verbose=0, warm_start=False)
 
         clf.fit(df_train[columns_pick], df_train['sentiment'])
         preds= clf.predict(df_dev[columns_pick])
