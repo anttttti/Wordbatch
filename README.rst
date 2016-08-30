@@ -22,6 +22,7 @@ normalization to be parallelized, a constant-time adaptive version of Norvig
 spelling correction, and passing any function for parallel stemming.
 
 Currently four basic feature extractor classes are provided:
+
 - Wordhash is simply the Scikit-learn HashingVectorizer wrapped with the
   Wordbatch parallelization, providing multiplied processing speeds.
 - Wordbag is a flexible alternative to Wordhash, providing cababilities
