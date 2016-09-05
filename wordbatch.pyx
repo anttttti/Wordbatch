@@ -13,7 +13,7 @@ import operator
 #from nltk.metrics import edit_distance
 import Levenshtein #python-Levenshtein
 import scipy.sparse as ssp
-from scipy.sparse import csr_matrix
+import scipy as sp
 import numpy as np
 import gzip
 import array
@@ -64,6 +64,7 @@ def correct_spelling(word, dft, spell_index, spellcor_count, spellcor_dist):
         if x in spell_index:
             for y in spell_index[x]:  candidates[y]= 1
     for word2 in list(candidates.keys()):
+        #score= edit_distance(word, word2, True)
         score= Levenshtein.distance(word, word2)
         if score>spellcor_dist:  continue
         #score = float(dft[word2]) / score
@@ -77,7 +78,18 @@ def correct_spelling(word, dft, spell_index, spellcor_count, spellcor_dist):
 
 def batch_correct_spellings(args):
     corrs= args[1]
-    return [u" ".join([corrs.get(word, word) for word in text.split()]) for text in args[0]]
+    if args[2]== None: return [u" ".join([corrs.get(word, word) for word in text.split()]) for text in args[0]]
+    res= []
+    pos_tagger= args[2]
+    for text in args[0]:
+        text2= []
+        tags= pos_tagger(text)
+        text= text.split()
+        for y in range(len(text)):
+            word= text[y]
+            text2.append(corrs.get(word, word)+"_"+tags[y][1])
+        res.append(u" ".join(text2))
+    return res
 
 def batch_find_normalizations(args):
     dft = args[1]
@@ -99,12 +111,10 @@ def get_deletions(word, order):
         stack = stack2
     return list(results.keys())
 
-
-
 class WordBatch(object):
     def __init__(self, normalize_text, spellcor_count=0, spellcor_dist= 2, n_words= 10000000, min_count= 0,
                  max_count= 1.0, raw_min_count= 0, procs= 8, verbose= 3, minibatch_size= 20000,
-                 stemmer= None, extractors=[("wordbag",{})]):
+                 stemmer= None, pos_tagger= None, extractors=[("wordbag",{})]):
         self.procs= procs
         self.verbose= verbose
         self.minibatch_size= minibatch_size
@@ -120,6 +130,7 @@ class WordBatch(object):
         self.spellcor_dist= spellcor_dist
         self.stemmer= stemmer
         self.raw_min_count= raw_min_count
+        self.pos_tagger= pos_tagger
 
         self.doc_count= 0
         self.n_words= n_words
@@ -193,11 +204,9 @@ class WordBatch(object):
         else:
             corrs = dict((word, correct_spelling(
                 word, raw_dft2, spell_index, self.spellcor_count, self.spellcor_dist)) for word in self.raw_dft)
-        if self.spellcor_dist > 0: self.raw_dft= {}
         if self.verbose > 0:  print "Make word normalizations"
-
         texts= [item for sublist in self.parallelize_batches(self.procs, batch_correct_spellings,
-                                                      texts, [corrs]) for item in sublist]
+                                                              texts, [corrs, self.pos_tagger])  for item in sublist]
         return texts
 
     def fit(self, texts):
@@ -218,6 +227,7 @@ class WordBatch(object):
 
     def transform(self, texts, labels= None, extractors= None):
         if extractors== None:  extractors= self.extractors
+        if extractors== []: return texts
         texts= self.fit(texts)
         features= []
         for extractor in extractors:  features.append(extractor.transform(texts))
@@ -226,15 +236,24 @@ class WordBatch(object):
 
     def parallelize_batches(self, procs, task, texts, argss):
         paral_params= []
-        cdef int start= 0, len_texts= len(texts), minibatch_size= self.minibatch_size
-        while start<len_texts:
-            paral_params.append([texts[start:start+minibatch_size]] +argss)
-            start+= minibatch_size
-        with closing(multiprocessing.Pool(procs)) as pool:
+        cdef int start= 0, len_texts= 0, minibatch_size= self.minibatch_size
+        if type(texts) is list:  len_texts= len(texts)
+        else:
+            len_texts= texts.shape[0]
+            if minibatch_size> len_texts: minibatch_size= len_texts
+        while start < len_texts:
+            paral_params.append([texts[start:start + minibatch_size]] + argss)
+            start += minibatch_size
+
+        with closing(multiprocessing.Pool(max(1,procs))) as pool:
             results= pool.map(task, paral_params)
             pool.close()
             pool.join()
         return results
+
+    def batch_apply_func(self, args):
+        fnc= args[1]
+        return fnc(args[0])
 
     def shuffle_batch(self, texts, labels= None, seed= None):
         if seed!=None:  random.seed(seed)
@@ -244,6 +263,9 @@ class WordBatch(object):
         if labels==None:  return texts
         labels= [labels[x] for x in index_shuf]
         return texts, labels
+
+    def predict_parallel(self, texts, clf):
+        return sp.vstack(self.parallelize_batches(self.procs / 2, self.batch_apply_func, texts, [clf.predict]))[0]
 
 cdef class TextRow:
     cdef np.ndarray indices, data
@@ -339,7 +361,7 @@ class WordBag():
         cdef np.int32_t size= textrow.size
         cdef int rowdim= fc_hash_size+1 if (fc_hash_ngrams!=0 or fc_hash_polys_window!=0) else wb.n_words
 
-        wordbag= csr_matrix((textrow.data[:size], textrow.indices[:size], array.array("i", ([0, size]))),
+        wordbag= ssp.csr_matrix((textrow.data[:size], textrow.indices[:size], array.array("i", ([0, size]))),
                             shape=(1, rowdim), dtype=float)
         wordbag.sum_duplicates()
 
@@ -364,11 +386,10 @@ class WordBag():
         return wordbag
 
     def batch_get_wordbags(self, args):
-        #return args[1].hv.transform(args[0])
         return ssp.vstack([self.get_wordbag(text) for text in args[0]])
 
     def transform(self, texts):
-        return ssp.vstack(self.wb.parallelize_batches(max(1, int(self.wb.procs / 2)),
+        return ssp.vstack(self.wb.parallelize_batches(int(self.wb.procs / 2),
                                                       self.batch_get_wordbags, texts, []))
 
 class WordHash():
@@ -379,7 +400,7 @@ class WordHash():
     def batch_get_wordbags(self, args):  return self.hv.transform(args[0])
 
     def transform(self, texts):
-        return ssp.vstack(self.wb.parallelize_batches(max(1, int(self.wb.procs / 2)), self.batch_get_wordbags,
+        return ssp.vstack(self.wb.parallelize_batches(int(self.wb.procs / 2), self.batch_get_wordbags,
                                                       texts, []))
 
 class WordSeq():
