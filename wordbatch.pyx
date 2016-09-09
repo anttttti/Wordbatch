@@ -278,7 +278,7 @@ cdef class TextRow:
         self.fea_weights= {}
         self.size= 0
 
-    def append(self, int index, int value, float weight):
+    cdef append(self, int index, int value, float weight):
         self.indices[self.size]= index
         self.data[self.size]= value
         self.fea_weights[index]= weight
@@ -305,10 +305,11 @@ class WordBag():
 
     def get_wordbag(self, text):
         wb= self.wb
-        cdef int fc_hash_ngrams= self.hash_ngrams
-        fc_idf= self.idf
-        cdef float idf_lift= 0.0
-        if fc_idf!= None:  idf_lift= fc_idf
+        cdef int fc_hash_ngrams= self.hash_ngrams, word_id, df= 1, df2, hashed, doc_count= wb.doc_count, use_idf= 0
+        cdef float idf_lift= 0.0, idf= 1.0, weight, norm= 1.0
+        if self.idf!= None:
+            use_idf= True
+            idf_lift= self.idf
         cdef int fc_hash_size= self.hash_size
         fc_hash_ngrams_weights= self.hash_ngrams_weights
         fc_tf= self.tf
@@ -319,23 +320,18 @@ class WordBag():
 
         text= text.split()
         cdef TextRow textrow= TextRow(len(text)* max(1, fc_hash_ngrams))
-
-        cdef int word_id, df= 1, df2, hashed, doc_count= wb.doc_count
-        cdef float idf= 1.0, weight, norm= 1.0
         for x from 0 <= x < len(text):
             word= text[x]
             if not(wb.dictionary_freeze):  df= wb.dft[word]
             if df==0: continue
-            if fc_idf != None:
-                #idf= np.log(max(1.0, idf_lift + doc_count / df))
+            if use_idf:
                 idf= log(max(1.0, idf_lift + doc_count / df))
                 if idf== 0.0:  continue
 
             if fc_hash_ngrams==0:
-                ###wb.dictionary != None
-                word_id= wb.dictionary.get(word, -1)
-                if word_id == -1:  continue
-                textrow.append(word_id, 1, idf)
+               word_id= wb.dictionary.get(word, -1)
+               if word_id == -1:  continue
+               textrow.append(word_id, 1, idf)
 
             for y from 0 <= y < min(fc_hash_ngrams, x+1):
                 hashed= murmurhash3_bytes_s32((" ".join(text[x-y:x+1])).encode("utf-8"), 0)
@@ -358,10 +354,10 @@ class WordBag():
                     textrow.append(abs(hashed) % fc_hash_size, (hashed >= 0) * 2 - 1, weight)
 
         cdef np.int32_t size= textrow.size
-        cdef int rowdim= fc_hash_size+1 if (fc_hash_ngrams!=0 or fc_hash_polys_window!=0) else wb.n_words
+        cdef int rowdim= fc_hash_size if (fc_hash_ngrams!=0 or fc_hash_polys_window!=0) else wb.n_words
 
         wordbag= ssp.csr_matrix((textrow.data[:size], textrow.indices[:size], array.array("i", ([0, size]))),
-                            shape=(1, rowdim), dtype=float)
+                            shape=(1, rowdim), dtype=np.float64)
         wordbag.sum_duplicates()
 
         if fc_tf== 'log':  wordbag.data= np.log(1.0+np.abs(wordbag.data)) *np.sign(wordbag.data)
