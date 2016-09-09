@@ -320,11 +320,11 @@ class WordBag():
         text= text.split()
         cdef TextRow textrow= TextRow(len(text)* max(1, fc_hash_ngrams))
 
-        cdef int word_id, df, df2, hashed, doc_count= wb.doc_count
+        cdef int word_id, df= 1, df2, hashed, doc_count= wb.doc_count
         cdef float idf= 1.0, weight, norm= 1.0
         for x from 0 <= x < len(text):
             word= text[x]
-            df= wb.dft[word]
+            if not(wb.dictionary_freeze):  df= wb.dft[word]
             if df==0: continue
             if fc_idf != None:
                 #idf= np.log(max(1.0, idf_lift + doc_count / df))
