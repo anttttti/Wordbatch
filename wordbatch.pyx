@@ -217,8 +217,7 @@ class WordBatch(object):
             self.update_dictionary(texts, self.raw_dft, None, self.raw_min_count)
             if self.verbose > 0:  print "Normalize wordforms"
             texts= self.normalize_wordforms(texts)
-        if not(self.dictionary_freeze):
-            self.update_dictionary(texts, self.dft, self.dictionary, self.min_count)
+        if not(self.dictionary_freeze):  self.update_dictionary(texts, self.dft, self.dictionary, self.min_count)
         return texts
 
     def fit_transform(self, texts, labels=None):  return self.transform(texts, labels)
@@ -237,7 +236,7 @@ class WordBatch(object):
     def parallelize_batches(self, procs, task, texts, argss):
         paral_params= []
         cdef int start= 0, len_texts= 0, minibatch_size= self.minibatch_size
-        if type(texts) is list:  len_texts= len(texts)
+        if type(texts) is list or type(texts) is tuple:  len_texts= len(texts)
         else:
             len_texts= texts.shape[0]
             if minibatch_size> len_texts: minibatch_size= len_texts
@@ -400,8 +399,7 @@ class WordHash():
     def batch_get_wordbags(self, args):  return self.hv.transform(args[0])
 
     def transform(self, texts):
-        return ssp.vstack(self.wb.parallelize_batches(int(self.wb.procs / 2), self.batch_get_wordbags,
-                                                      texts, []))
+        return ssp.vstack(self.wb.parallelize_batches(int(self.wb.procs / 2), self.batch_get_wordbags, texts, []))
 
 class WordSeq():
     def __init__(self, wb, fea_cfg):
@@ -421,15 +419,11 @@ class WordSeq():
             wordseq = [dictionary.get(word, wb.n_words - 1) for word in text.split()]
         if self.seq_maxlen != None:
             if len(wordseq) > self.seq_maxlen:
-                if self.seq_truncstart:
-                    wordseq = wordseq[-self.seq_maxlen:]
-                else:
-                    wordseq = wordseq[:self.seq_maxlen]
+                if self.seq_truncstart:  wordseq= wordseq[-self.seq_maxlen:]
+                else:  wordseq= wordseq[:self.seq_maxlen]
             else:
-                if self.seq_padstart == True:
-                    wordseq = [0] * (self.seq_maxlen - len(wordseq)) + wordseq
-                else:
-                    wordseq += [0] * (wb.seq_maxlen - len(wordseq))
+                if self.seq_padstart == True:  wordseq= [0] * (self.seq_maxlen - len(wordseq)) + wordseq
+                else:  wordseq+= [0] * (wb.seq_maxlen - len(wordseq))
         return wordseq
 
     def batch_get_wordseqs(self, args):
