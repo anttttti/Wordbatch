@@ -2,7 +2,6 @@
 #cython: boundscheck=False, infer_types=True, wraparound=False
 import os
 import multiprocessing
-#import multiprocessing.dummy as multiprocessing
 import copy_reg
 import types
 from sklearn.utils.murmurhash import murmurhash3_32
@@ -267,26 +266,18 @@ class WordBatch(object):
         return sp.vstack(self.parallelize_batches(self.procs / 2, self.batch_apply_func, texts, [clf.predict]))[0]
 
 cdef class TextRow:
-    cdef np.ndarray indices, data
+    cdef list indices, data
     cdef dict fea_weights
-    cdef np.int32_t capacity, size
 
-    def __init__(self, np.int32_t capacity):
-        self.capacity= capacity
-        self.indices= np.empty(capacity, dtype=int)
-        self.data= np.empty(capacity, dtype=int)
+    def __init__(self):
+        self.indices= []
+        self.data= []
         self.fea_weights= {}
-        self.size= 0
 
     cdef append(self, int index, int value, float weight):
-        self.indices[self.size]= index
-        self.data[self.size]= value
+        self.indices.append(index)
+        self.data.append(value)
         self.fea_weights[index]= weight
-        self.size+= 1
-        if self.size == self.capacity:
-            self.capacity *= 2
-            self.indices= np.resize(self.indices, self.capacity)
-            self.data= np.resize(self.data, self.capacity)
 
 class WordBag():
     def __init__(self, wb, fea_cfg):
@@ -319,7 +310,7 @@ class WordBag():
         cdef float fc_hash_polys_maxdf= self.hash_polys_maxdf
 
         text= text.split()
-        cdef TextRow textrow= TextRow(len(text)* max(1, fc_hash_ngrams))
+        cdef TextRow textrow= TextRow()
         for x from 0 <= x < len(text):
             word= text[x]
             if not(wb.dictionary_freeze):  df= wb.dft[word]
@@ -353,11 +344,11 @@ class WordBag():
                     #print word, word2, df, df2, x, y, abs(hashed) % fc_hash_size, (hashed >= 0) * 2 - 1, weight
                     textrow.append(abs(hashed) % fc_hash_size, (hashed >= 0) * 2 - 1, weight)
 
-        cdef np.int32_t size= textrow.size
+        cdef np.int32_t size= len(textrow.data)
         cdef int rowdim= fc_hash_size if (fc_hash_ngrams!=0 or fc_hash_polys_window!=0) else wb.n_words
 
-        wordbag= ssp.csr_matrix((textrow.data[:size], textrow.indices[:size], array.array("i", ([0, size]))),
-                            shape=(1, rowdim), dtype=np.float64)
+        wordbag = ssp.csr_matrix((textrow.data, textrow.indices, array.array("i", ([0, size]))),
+                                 shape=(1, rowdim), dtype=np.float64)
         wordbag.sum_duplicates()
 
         if fc_tf== 'log':  wordbag.data= np.log(1.0+np.abs(wordbag.data)) *np.sign(wordbag.data)
@@ -383,7 +374,6 @@ class WordBag():
         return ssp.vstack([self.get_wordbag(text) for text in args[0]])
 
     def transform(self, texts):
-        #return ssp.vstack(self.wb.parallelize_batches(int(self.wb.procs / 2),
         return ssp.vstack(self.wb.parallelize_batches(int(self.wb.procs /2),  self.batch_get_wordbags, texts, []))
 
 class WordHash():
@@ -391,10 +381,10 @@ class WordHash():
         self.wb= wb
         self.hv= HashingVectorizer(**fea_cfg)
 
-    def batch_get_wordbags(self, args):  return self.hv.transform(args[0])
+    def batch_get_wordhashes(self, args):  return self.hv.transform(args[0])
 
     def transform(self, texts):
-        return ssp.vstack(self.wb.parallelize_batches(int(self.wb.procs / 2), self.batch_get_wordbags, texts, []))
+        return ssp.vstack(self.wb.parallelize_batches(int(self.wb.procs / 2), self.batch_get_wordhashes, texts, []))
 
 class WordSeq():
     def __init__(self, wb, fea_cfg):
