@@ -375,7 +375,6 @@ class WordBag():
         if fc_norm== 'l0':  norm= size
         elif fc_norm == 'l1':  norm= np.sum(np.abs(data_view))
         elif fc_norm== 'l2':  norm= np.sqrt(np.sum([w*w for w in data_view]))
-
         if norm != 0.0:  norm = 1.0 / norm
         if fc_norm!=None:  wordbag.data*= norm
         return wordbag
@@ -384,8 +383,8 @@ class WordBag():
         return ssp.vstack([self.get_wordbag(text) for text in args[0]])
 
     def transform(self, texts):
-        return ssp.vstack(self.wb.parallelize_batches(int(self.wb.procs / 2),
-                                                      self.batch_get_wordbags, texts, []))
+        #return ssp.vstack(self.wb.parallelize_batches(int(self.wb.procs / 2),
+        return ssp.vstack(self.wb.parallelize_batches(int(self.wb.procs /2),  self.batch_get_wordbags, texts, []))
 
 class WordHash():
     def __init__(self, wb, fea_cfg):
