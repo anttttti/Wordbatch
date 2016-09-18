@@ -5,7 +5,7 @@ import numpy
 
 setup(
     name='Wordbatch',
-    version='1.1',
+    version='1.1.0',
     description='Parallel text feature extraction for machine learning',
     url='https://github.com/anttttti/Wordbatch',
     author='Antti Puurula',
