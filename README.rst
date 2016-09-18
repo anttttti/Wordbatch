@@ -29,12 +29,12 @@ Getting started
 | #from sklearn.linear_model import *
 | #vct= HashingVectorizer()
 | #clf= SGDRegressor()
-
+|
 | import wordbatch
 | from wordbatch.models import FTRL
 | vct= wordbatch.WordBatch(extractors=[(wordbatch.WordBag, {"hash_ngrams":2, "hash_ngrams_weights":[0.5, -1.0], "hash_size":2**23, "norm":'l2', "tf":'log', "idf":50.0})])
 | clf= FTRL(alpha=1.0, beta=1.0, L1=0.00001, L2=1.0, D=2 ** 25, iters=1, inv_link="identity")
-
+|
 | clf.fit(vct.transform(texts))
 | preds= clf.predict(vct.transform(texts2))
 
