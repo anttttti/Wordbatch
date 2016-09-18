@@ -18,6 +18,8 @@ import gzip
 import array
 import sys
 import random
+import time
+import re
 
 from cpython cimport array
 cimport cython
@@ -26,6 +28,7 @@ from libc.math cimport log
 cimport numpy as np
 cdef inline int int_max(int a, int b): return a if a >= b else b
 cdef inline int int_min(int a, int b): return a if a <= b else b
+import pp
 
 np.import_array()
 
@@ -110,13 +113,20 @@ def get_deletions(word, order):
         stack = stack2
     return list(results.keys())
 
+non_alphanums= re.compile('[^A-Za-z0-9]+')
+def default_normalize_text(text):
+    return " ".join([x for x in [y for y in non_alphanums.sub(' ', text).lower().strip().split()] if len(x)>1])
+
 class WordBatch(object):
-    def __init__(self, normalize_text, spellcor_count=0, spellcor_dist= 2, n_words= 10000000, min_count= 0,
-                 max_count= 1.0, raw_min_count= 0, procs= 8, verbose= 3, minibatch_size= 20000,
-                 stemmer= None, pos_tagger= None, extractors=[("wordbag",{})]):
+    def __init__(self, normalize_text= default_normalize_text, spellcor_count=0, spellcor_dist= 2, n_words= 10000000,
+                 min_count= 0, max_count= 1.0, raw_min_count= 0, procs= 0, verbose= 1, minibatch_size= 20000,
+                 stemmer= None, pos_tagger= None, extractors=[("wordbag",{})], timeout= 300):
+        if procs==0:  procs= multiprocessing.cpu_count()
         self.procs= procs
         self.verbose= verbose
         self.minibatch_size= minibatch_size
+        self.timeout= timeout
+
         self.dictionary_freeze= False
         self.dictionary= {u'':0}
         self.dft= Counter()
@@ -137,17 +147,13 @@ class WordBatch(object):
         self.max_count= max_count
 
         for x in range(len(extractors)):
-            if type(extractors[x])==str:
+            if type(extractors[x])!=tuple and type(extractors[x])!=list:
                 extractor= extractors[x]
                 fea_cfg= {}
             else:
                 extractor= extractors[x][0]
                 fea_cfg= extractors[x][1]
-            if extractor=="wordbag":  extractor= WordBag(self, fea_cfg)
-            elif extractor=="wordhash": extractor= WordHash(self, fea_cfg)
-            elif extractor=="wordseq":  extractor= WordSeq(self, fea_cfg)
-            elif extractor=="wordvec":  extractor= WordVec(self, fea_cfg)
-            extractors[x]= extractor
+            extractors[x]= extractor(self, fea_cfg)
         self.extractors= extractors
 
     def update_dictionary(self, texts, dft, dictionary, min_count):
@@ -232,9 +238,10 @@ class WordBatch(object):
         if len(features)==1: return features[0]
         return features
 
-    def parallelize_batches(self, procs, task, texts, argss):
+    def parallelize_batches(self, procs, task, texts, argss, method="multiprocessing", timeout=-1):
+        if timeout==-1:  timeout= self.timeout
+        cdef int attempt= 0, start= 0, len_texts= 0, minibatch_size= self.minibatch_size
         paral_params= []
-        cdef int start= 0, len_texts= 0, minibatch_size= self.minibatch_size
         if type(texts) is list or type(texts) is tuple:  len_texts= len(texts)
         else:
             len_texts= texts.shape[0]
@@ -242,16 +249,37 @@ class WordBatch(object):
         while start < len_texts:
             paral_params.append([texts[start:start + minibatch_size]] + argss)
             start += minibatch_size
-
-        with closing(multiprocessing.Pool(max(1,procs))) as pool:
-            results= pool.map(task, paral_params)
-            pool.close()
-            pool.join()
+        while (attempt != -1):
+            try:
+                if method=="multiprocessing":
+                    with closing(multiprocessing.Pool(max(1, procs), maxtasksperchild=2)) as pool:
+                        results= pool.map_async(task, paral_params)
+                        if timeout==0:
+                            pool.close()
+                            pool.join()
+                            results= results.get()
+                        else:
+                            results.wait(timeout=timeout)
+                            if results.ready():  results= results.get()
+                            else:  raise ValueError('Parallelization timeout')
+                elif method=="threading":
+                    with closing(multiprocessing.dummy.Pool(max(1,procs))) as pool:
+                       results= pool.map(task, paral_params)
+                       pool.close()
+                       pool.join()
+                #elif method == "parallelpython":
+                #    job_server= pp.Server()
+                #    jobs= [job_server.submit(task, (x,), (), ()) for x in paral_params]
+                #    results= [x() for x in jobs]
+            except:
+                print "Parallelization fail. Method:", method, "Task:", task
+                attempt+= 1
+                if timeout!=0: timeout*= 2
+                if attempt>=5:  return None
+                print "Retrying, attempt:", attempt, "timeout limit:", timeout, "seconds"
+                continue
+            attempt= -1
         return results
-
-    def batch_apply_func(self, args):
-        fnc= args[1]
-        return fnc(args[0])
 
     def shuffle_batch(self, texts, labels= None, seed= None):
         if seed!=None:  random.seed(seed)
@@ -261,6 +289,10 @@ class WordBatch(object):
         if labels==None:  return texts
         labels= [labels[x] for x in index_shuf]
         return texts, labels
+
+    def batch_apply_func(self, args):
+        fnc= args[1]
+        return fnc(args[0])
 
     def predict_parallel(self, texts, clf):
         return sp.vstack(self.parallelize_batches(self.procs / 2, self.batch_apply_func, texts, [clf.predict]))[0]
@@ -374,7 +406,8 @@ class WordBag():
         return ssp.vstack([self.get_wordbag(text) for text in args[0]])
 
     def transform(self, texts):
-        return ssp.vstack(self.wb.parallelize_batches(int(self.wb.procs /2),  self.batch_get_wordbags, texts, []))
+        if self.wb.verbose > 0:  print "Extract wordbags"
+        return ssp.vstack(self.wb.parallelize_batches(int(self.wb.procs / 2),  self.batch_get_wordbags, texts, []))
 
 class WordHash():
     def __init__(self, wb, fea_cfg):
@@ -384,6 +417,7 @@ class WordHash():
     def batch_get_wordhashes(self, args):  return self.hv.transform(args[0])
 
     def transform(self, texts):
+        if self.wb.verbose> 0:  print "Extract wordhashes"
         return ssp.vstack(self.wb.parallelize_batches(int(self.wb.procs / 2), self.batch_get_wordhashes, texts, []))
 
 class WordSeq():
@@ -415,6 +449,7 @@ class WordSeq():
         return [self.get_wordseq(text) for text in args[0]]
 
     def transform(self, texts):
+        if self.wb.verbose > 0:  print "Extract wordseqs"
         return [item for sublist in self.wb.parallelize_batches(self.wb.procs, self.batch_get_wordseqs, texts, [])
                 for item in sublist]
 
@@ -457,5 +492,14 @@ class WordVec():
     def batch_get_wordvecs(self, args):  return [self.get_wordvec(text) for text in args[0]]
 
     def transform(self, texts):
+        if self.wb.verbose > 0:  print "Extract wordvecs"
         return [item for sublist in self.wb.parallelize_batches(self.wb.procs, self.batch_get_wordvecs, texts, [])
                 for item in sublist]
+
+class NormText():
+    def __init__(self, wb, fea_cfg):
+        self.wb = wb
+
+    def transform(self, texts):
+        if self.wb.verbose > 0:  print "Return normalized text"
+        return texts

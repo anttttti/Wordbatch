@@ -16,6 +16,7 @@ from neon.util.argparser import NeonArgparser, extract_valid_args
 from neon.callbacks.callbacks import Callbacks
 import wordbatch
 import random
+from threading import Thread
 
 non_alphas = re.compile('[^A-Za-z\'-]+')
 trash_re= [re.compile("<[^>]*>"), re.compile("[^a-z0-9' -]+"), re.compile(" [.0-9'-]+ "),
@@ -52,8 +53,8 @@ class WordseqRegressor():
             Affine(1, init_glorot, bias=init_glorot, activation=Identity(), name="Affine")
         ]
 
-        self.wordbatch = wordbatch.WordBatch(normalize_text, n_words=self.n_words, procs=8,
-                                             extractors=[("wordseq", {"seq_maxlen": self.maxlen})])
+        self.wordbatch= wordbatch.WordBatch(normalize_text, n_words=self.n_words,
+                                             extractors=[(wordbatch.WordSeq, {"seq_maxlen": self.maxlen})])
 
         if datadir == None:
             self.model= Model(self.layers)
@@ -66,6 +67,19 @@ class WordseqRegressor():
 
     def format_texts(self, texts):  return self.remove_unks(self.wordbatch.transform(texts))
 
+    class ThreadWithReturnValue(Thread):
+        def __init__(self, group=None, target=None, name=None, args=(), kwargs={}, Verbose=None):
+            Thread.__init__(self, group, target, name, args, kwargs, Verbose)
+            self._return = None
+
+        def run(self):
+            if self._Thread__target is not None:
+                self._return = self._Thread__target(*self._Thread__args, **self._Thread__kwargs)
+
+        def join(self):
+            Thread.join(self)
+            return self._return
+
     def train(self, datadir, pickle_model=""):
         texts= []
         labels= []
@@ -74,6 +88,7 @@ class WordseqRegressor():
         texts2= []
         batchsize= 100000
 
+        t= None
         for jsonfile in training_data:
             with open(datadir + "/" + jsonfile, u'r') as inputfile:
                 for line in inputfile:
@@ -82,15 +97,17 @@ class WordseqRegressor():
                     except:  continue
                     for review in line["Reviews"]:
                         rcount+= 1
-                        if rcount % 10000 == 0:  print rcount
+                        if rcount % 100000 == 0:  print rcount
                         if rcount % 8 != 0: continue
                         if "Overall" not in review["Ratings"]: continue
                         texts.append(review["Content"])
                         labels.append((float(review["Ratings"]["Overall"]) - 3) *0.5)
                         if len(texts) % batchsize == 0:
-                            texts2.append(self.wordbatch.transform(texts))
-                            del(texts)
+                            if t != None:  texts2.append(t.join())
+                            t= self.ThreadWithReturnValue(target= self.wordbatch.transform, args= (texts,))
+                            t.start()
                             texts= []
+        texts2.append(t.join())
         texts2.append(self.wordbatch.transform(texts))
         del(texts)
         texts= sp.vstack(texts2)

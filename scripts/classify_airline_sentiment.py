@@ -9,12 +9,12 @@ import textblob
 from math import *
 import time, datetime
 
-tripadvisor_dir= "data/tripadvisor/json"
+tripadvisor_dir= "../data/tripadvisor/json"
 if __name__ == "__main__":
     start_time= time.time()
     print datetime.datetime.now()
 
-    df= pd.DataFrame.from_csv("Tweets.csv", encoding="ISO-8859-1")
+    df= pd.DataFrame.from_csv("../data/Tweets.csv", encoding="ISO-8859-1")
     def sentiment_to_label(sentiment):
         if sentiment=="neutral":  return 0
         if sentiment=="negative":  return -1
@@ -37,34 +37,37 @@ if __name__ == "__main__":
 
     import wordbag_regressor
     print "Train wordbag regressor"
-    wordbag_regressor= wordbag_regressor.WordbagRegressor("wordbag_model.pkl.gz", tripadvisor_dir)
-    #wordbag_regressor= wordbag_regressor.WordbagRegressor("wordbag_model.pkl.gz")
+    wordbag_regressor= wordbag_regressor.WordbagRegressor("../models/wordbag_model.pkl.gz", tripadvisor_dir)
+    #wordbag_regressor= wordbag_regressor.WordbagRegressor("../models/wordbag_model.pkl.gz")
     df['wordbag_score']= wordbag_regressor.predict(df['text'].values)
 
     import wordhash_regressor
     print "Train wordhash regressor"
-    wordhash_regressor= wordhash_regressor.WordhashRegressor("wordhash_model.pkl.gz", tripadvisor_dir)
-    #wordhash_regressor= wordhash_regressor.WordhashRegressor("wordhash_model.pkl.gz")
+    wordhash_regressor= wordhash_regressor.WordhashRegressor("../models/wordhash_model.pkl.gz", tripadvisor_dir)
+    #wordhash_regressor= wordhash_regressor.WordhashRegressor("../models/wordhash_model.pkl.gz")
     df['wordhash_score']= wordhash_regressor.predict(df['text'].values)
 
     import wordseq_regressor
     print "Train wordseq regressor"
-    wordseq_regressor= wordseq_regressor.WordseqRegressor("wordseq_model.neo", tripadvisor_dir)
-    #wordseq_regressor= wordseq_regressor.WordseqRegressor("wordseq_model.neo")
+    wordseq_regressor= wordseq_regressor.WordseqRegressor("../models/wordseq_model.neo", tripadvisor_dir)
+    #wordseq_regressor= wordseq_regressor.WordseqRegressor("../models/wordseq_model.neo")
     df['wordseq_score']= wordseq_regressor.predict_batch(df['text'].values)
 
     import wordvec_regressor
     print "Train wordvec regressor"
-    wordvec_regressor= wordvec_regressor.WordvecRegressor("wordseq_model.pkl.gz", tripadvisor_dir)
-    #wordvec_regressor= wordvec_regressor.WordvecRegressor("wordseq_model.pkl.gz")
+    wordvec_regressor= wordvec_regressor.WordvecRegressor("../models/wordseq_model.pkl.gz", tripadvisor_dir)
+    #wordvec_regressor= wordvec_regressor.WordvecRegressor("../models/wordseq_model.pkl.gz")
     df['wordvec_score'] = wordvec_regressor.predict(df['text'].values)
 
     df['tweet_len']= df['text'].map(lambda x: log(1+len(x)))
     df['tweet_wordcount']= df['text'].map(lambda x: log(1+len(x.split())))
 
     full_preds= np.zeros(df.shape[0])
-    columns_pick= ['tweet_len', 'tweet_wordcount', 'wordbag_score', 'wordhash_score', 'wordseq_score', 'wordvec_score',
-                   'textblob_score']
+    columns_pick= ['tweet_len', 'tweet_wordcount', 'wordbag_score', 'wordhash_score', 'wordseq_score', 'wordvec_score', 'textblob_score'] #Mean Squared Error: 0.297226914949
+    #columns_pick= ['tweet_len', 'tweet_wordcount', 'wordhash_score', 'wordseq_score', 'wordvec_score', 'textblob_score'] #Mean Squared Error: 0.306232998673
+    #columns_pick= ['tweet_len', 'tweet_wordcount', 'wordbag_score', 'wordseq_score', 'wordvec_score', 'textblob_score'] #Mean Squared Error: 0.301717174865
+    #columns_pick= ['tweet_len', 'tweet_wordcount', 'wordbag_score', 'wordhash_score', 'wordvec_score', 'textblob_score'] #Mean Squared Error: 0.30183887755
+    #columns_pick= ['tweet_len', 'tweet_wordcount', 'wordbag_score', 'wordhash_score', 'wordseq_score', 'textblob_score'] #Mean Squared Error: 0.31160101908
 
     kf= KFold(df.shape[0], n_folds=10, shuffle=True, random_state=0)
     for train_index, dev_index in kf:

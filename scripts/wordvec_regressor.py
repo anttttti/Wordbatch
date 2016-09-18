@@ -3,9 +3,10 @@ import re
 import json
 import pickle as pkl
 import gzip
-from sklearn.linear_model import *
 import scipy as sp
 import wordbatch
+from wordbatch.models import FTRL
+import threading
 
 non_alphanums = re.compile(u'[\W]')
 nums_re= re.compile("\W*[0-9]+\W*")
@@ -20,21 +21,27 @@ def normalize_text(text):
 
 class WordvecRegressor(object):
     def __init__(self, pickle_model="", datadir=None):
-        self.wordbatch= wordbatch.WordBatch(normalize_text, procs=8,
+        self.wordbatch= wordbatch.WordBatch(normalize_text,
                                             extractors=[
-                        ("wordvec", {"wordvec_file": "data/word2vec/glove.twitter.27B.100d.txt.gz",
-                                    "normalize_text": normalize_text}),
-                        ("wordvec", {"wordvec_file": "data/word2vec/glove.6B.50d.txt.gz",
-                                    "normalize_text": normalize_text})
+                     (wordbatch.WordVec, {"wordvec_file": "../data/word2vec/glove.twitter.27B.100d.txt.gz",
+                                                        "normalize_text": normalize_text}),
+                     (wordbatch.WordVec, {"wordvec_file": "../data/word2vec/glove.6B.50d.txt.gz",
+                                                 "normalize_text": normalize_text})
                      ])
         self.wordbatch.dictionary_freeze= True
-        self.clf= SGDRegressor(loss='squared_loss', penalty='l2', alpha=0.0001, l1_ratio=0.15, fit_intercept=True,
-                                           n_iter=1, shuffle=True, verbose=0, epsilon=0.1, random_state=0,
-                                           learning_rate='invscaling', eta0=0.01, power_t=0.25, warm_start=False,
-                                            average=False)
+
+        self.clf= FTRL(alpha=1.0, beta=1.0, L1=0.00001, L2=1.0, D=2 ** 25, iters=1, inv_link= "identity")
 
         if datadir==None:  (self.wordbatch, self.clf)= pkl.load(gzip.open(pickle_model, u'rb'))
         else: self.train(datadir, pickle_model)
+
+    def fit_batch(self, texts, labels, rcount):
+        texts, labels = self.wordbatch.shuffle_batch(texts, labels, rcount)
+        print "Transforming", rcount
+        texts= self.wordbatch.transform(texts)
+        if len(texts) > 1:  texts= sp.hstack(texts)
+        print "Training", rcount
+        self.clf.fit(texts, labels)
 
     def train(self, datadir, pickle_model=""):
         texts= []
@@ -43,6 +50,7 @@ class WordvecRegressor(object):
         rcount= 0
         batchsize= 100000
 
+        p= None
         for jsonfile in training_data:
             with open(datadir + "/" + jsonfile, u'r') as inputfile:
                 for line in inputfile:
@@ -51,27 +59,19 @@ class WordvecRegressor(object):
                     except:  continue
                     for review in line["Reviews"]:
                         rcount+= 1
-                        if rcount % 10000 == 0:  print rcount
+                        if rcount % 100000 == 0:  print rcount
                         if rcount % 6 != 0: continue
                         if "Overall" not in review["Ratings"]: continue
                         texts.append(review["Content"])
                         labels.append((float(review["Ratings"]["Overall"]) - 3) *0.5)
                         if len(texts) % batchsize == 0:
-                            vecs= self.wordbatch.transform(texts)
-                            del (texts)
-                            if len(vecs)>1:  vecs= sp.hstack(vecs)
-                            self.clf.partial_fit(vecs, labels)
-                            del(vecs)
-                            del(labels)
+                            if p != None:  p.join()
+                            p= threading.Thread(target=self.fit_batch, args=(texts, labels, rcount))
+                            p.start()
                             texts= []
                             labels= []
-        if len(texts)>0:
-            vecs= self.wordbatch.transform(texts)
-            del(texts)
-            if len(vecs) > 1:  vecs= sp.hstack(vecs)
-            self.clf.partial_fit(vecs, labels)
-            del(vecs)
-            del(labels)
+        if p != None:  p.join()
+        self.fit_batch(texts, labels, rcount)
 
         if pickle_model!="":
             with gzip.open(pickle_model, u'wb') as model_file:
