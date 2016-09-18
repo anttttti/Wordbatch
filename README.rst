@@ -22,6 +22,12 @@ Starting with 1.1, Wordbatch provides an OpenMP-parallelized version of the FTRL
 
 Wordbatch is written with Cython, and uses concurrent threading, multiprocessing and OpenMP parallelization for circumventing the Python GIL. License is GNU GPL 2.0, and less restrictive licenses are available on request.
 
+
+Installation
+============
+pip install wordbatch
+
+
 Getting started
 ===============
 
@@ -33,10 +39,15 @@ Getting started
 | import wordbatch
 | from wordbatch.models import FTRL
 | vct= wordbatch.WordBatch(extractors=[(wordbatch.WordBag, {"hash_ngrams":2, "hash_ngrams_weights":[0.5, -1.0], "hash_size":2**23, "norm":'l2', "tf":'log', "idf":50.0})])
-| clf= FTRL(alpha=1.0, beta=1.0, L1=0.00001, L2=1.0, D=2 ** 25, iters=1, inv_link="identity")
+| clf= FTRL(alpha=1.0, beta=1.0, L1=0.00001, L2=1.0, D=2 ** 25, iters=1)
 |
-| clf.fit(vct.transform(texts))
-| preds= clf.predict(vct.transform(texts2))
+| train_texts= ["Some text in this form", "words..."]
+| train_labels= [0, 1]
+| test_texts= ["more text"] 
+|
+| clf.fit(vct.transform(train_texts), train_labels)
+| preds= clf.predict(vct.transform(test_texts))
+
 
 Example scripts
 ===============
