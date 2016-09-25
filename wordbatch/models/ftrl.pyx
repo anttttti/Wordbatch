@@ -16,7 +16,7 @@ cdef double inv_link_f(double e, int inv_link):
     if inv_link==1:  return 1.0 / (1.0 + exp(-fmax(fmin(e, 35.0), -35.0)))
     return e
 
-cdef double predict_single(int[:] inds, double[:] vals, int lenn, double L1, double L2, double alpha, double beta,
+cdef double predict_single(int* inds, double* vals, int lenn, double L1, double L2, double alpha, double beta,
                 double[:] w, double[:] z, double[:] n, int threads) nogil:
     cdef int i, ii
     cdef double sign, v
@@ -34,7 +34,7 @@ cdef double predict_single(int[:] inds, double[:] vals, int lenn, double L1, dou
         e += w[i] * v
     return e
 
-cdef void update_single(int[:] inds, double[:] vals, int lenn, double e, double alpha, double[:] w, double[:] z,
+cdef void update_single(int* inds, double* vals, int lenn, double e, double alpha, double[:] w, double[:] z,
                         double[:] n, int threads) nogil:
     cdef int i, ii
     cdef double g, g2, v
@@ -90,38 +90,61 @@ cdef class FTRL:
 
     def predict(self, X, int threads= 0):
         if threads==0:  threads= self.threads
+        #print "adaa"
         if type(X) != ssp.csr.csr_matrix:  X= ssp.csr_matrix(X, dtype=np.float64)
-        p= np.zeros((X.shape[0], ), dtype=np.float64)
-        cdef double[:] pp= p, Xvals= X.data, vals
-        cdef int i, lenn, row_count= X.shape[0], row
-        cdef int[:] Xindptr= X.indptr, Xinds= X.indices, inds
+# return self.predict_f(X, np.ascontiguousarray(X.data), np.ascontiguousarray(X.indices),
+#               np.ascontiguousarray(X.indptr), threads)
+        return self.predict_f(X.data, X.indices, X.indptr, threads)
 
+    def predict_f(self, np.ndarray[double, ndim=1, mode='c'] X_data,
+                    np.ndarray[int, ndim=1, mode='c'] X_indices,
+                    np.ndarray[int, ndim=1, mode='c'] X_indptr, int threads):
+        #print "aadadaa"
+        #p= []
+        p= np.zeros(X_indptr.shape[0]-1, dtype= np.float64)
+        #cdef double[:] pp= p, pXvals= X.data, vals
+        cdef int i, lenn, row_count= X_indptr.shape[0]-1, row, ptr
+
+        cdef int* inds2, indptr2
+        cdef double* vals2
+        #print "aaa"
         for row in range(row_count):
-            ptr= Xindptr[row]
-            lenn= Xindptr[row + 1] - ptr
-            inds= Xinds[ptr:ptr + lenn]
-            vals= Xvals[ptr:ptr + lenn]
-            pp[row]= inv_link_f(predict_single(inds, vals, lenn, self.L1, self.L2, self.alpha, self.beta, self.w, self.z,
+            ptr= X_indptr[row]
+            lenn= X_indptr[row + 1] - ptr
+            inds2= <int*> X_indices.data + ptr
+            vals2= <double*> X_data.data + ptr
+            p[row]= inv_link_f(predict_single(inds2, vals2, lenn, self.L1, self.L2, self.alpha, self.beta, self.w, self.z,
                                              self.n, threads), self.inv_link)
+            #print row, pp[row], p.shape
+        #print len(p)
         return p
 
     def fit(self, X, y, int threads= 0):
         if threads == 0:  threads= self.threads
-        if type(X) != ssp.csr.csr_matrix:  X= ssp.csr_matrix(X, dtype=np.float64)
-        if type(y) != np.array:  y= np.array(y, dtype=np.float64)
+        if type(X) != ssp.csr.csr_matrix:  X = ssp.csr_matrix(X, dtype=np.float64)
+        if type(y) != np.array:  y = np.array(y, dtype=np.float64)
+        # self.fit_f(X, np.ascontiguousarray(X.data), np.ascontiguousarray(X.indices),
+        #           np.ascontiguousarray(X.indptr), y, threads)
+        self.fit_f(X.data, X.indices, X.indptr, y, threads)
+
+    def fit_f(self, np.ndarray[double, ndim=1, mode='c'] X_data,
+                    np.ndarray[int, ndim=1, mode='c'] X_indices,
+                    np.ndarray[int, ndim=1, mode='c'] X_indptr, y, int threads):
         cdef double alpha= self.alpha, beta= self.beta, L1= self.L1, L2= self.L2
-        cdef double[:] w= self.w, z= self.z, n= self.n, vals, ys= y, Xvals= X.data
-        cdef int lenn, i, ptr, row_count= X.shape[0], row
-        cdef int[:] Xindptr= X.indptr, Xinds= X.indices, inds
+        cdef double[:] w= self.w, z= self.z, n= self.n, ys= y
+        cdef int lenn, i, ptr, row_count= X_indptr.shape[0]-1, row
+
+        cdef int* inds2, indptr2
+        cdef double* vals2
 
         for iters in range(self.iters):
             for row in range(row_count):
-                ptr= Xindptr[row]
-                lenn= Xindptr[row+1]-ptr
-                inds= Xinds[ptr:ptr+lenn]
-                vals= Xvals[ptr:ptr+lenn]
-                update_single(inds, vals, lenn,
-                              inv_link_f(predict_single(inds, vals, lenn, L1, L2, alpha, beta, w, z, n, threads),
+                ptr= X_indptr[row]
+                lenn= X_indptr[row+1]-ptr
+                inds2= <int*> X_indices.data+ptr
+                vals2= <double*> X_data.data+ptr
+                update_single(inds2, vals2, lenn,
+                              inv_link_f(predict_single(inds2, vals2, lenn, L1, L2, alpha, beta, w, z, n, threads),
                                        self.inv_link)-ys[row],
                               alpha, w, z, n, threads)
 
