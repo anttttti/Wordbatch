@@ -90,7 +90,6 @@ cdef class FTRL:
 
     def predict(self, X, int threads= 0):
         if threads==0:  threads= self.threads
-        #print "adaa"
         if type(X) != ssp.csr.csr_matrix:  X= ssp.csr_matrix(X, dtype=np.float64)
 # return self.predict_f(X, np.ascontiguousarray(X.data), np.ascontiguousarray(X.indices),
 #               np.ascontiguousarray(X.indptr), threads)
@@ -99,15 +98,11 @@ cdef class FTRL:
     def predict_f(self, np.ndarray[double, ndim=1, mode='c'] X_data,
                     np.ndarray[int, ndim=1, mode='c'] X_indices,
                     np.ndarray[int, ndim=1, mode='c'] X_indptr, int threads):
-        #print "aadadaa"
-        #p= []
         p= np.zeros(X_indptr.shape[0]-1, dtype= np.float64)
-        #cdef double[:] pp= p, pXvals= X.data, vals
         cdef int lenn, row_count= X_indptr.shape[0]-1, row, ptr
 
         cdef int* inds2, indptr2
         cdef double* vals2
-        #print "aaa"
         for row in range(row_count):
             ptr= X_indptr[row]
             lenn= X_indptr[row + 1] - ptr
@@ -115,8 +110,6 @@ cdef class FTRL:
             vals= <double*> X_data.data + ptr
             p[row]= inv_link_f(predict_single(inds, vals, lenn, self.L1, self.L2, self.alpha, self.beta, self.w, self.z,
                                              self.n, threads), self.inv_link)
-            #print row, pp[row], p.shape
-        #print len(p)
         return p
 
     def fit(self, X, y, int threads= 0):
