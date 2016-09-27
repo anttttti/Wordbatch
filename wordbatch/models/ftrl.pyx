@@ -17,11 +17,12 @@ cdef double inv_link_f(double e, int inv_link):
     return e
 
 cdef double predict_single(int* inds, double* vals, int lenn, double L1, double L2, double alpha, double beta,
-                double[::1] w, double[::1] z, double[::1] n, int threads) nogil:
-    cdef int i, ii
+                double[::1] w, double[::1] z, double[::1] n, bint bias_term, int threads) nogil:
+    cdef int i, ii, lenn2= lenn
     cdef double sign, v
     cdef double e= 0.0
-    for ii in prange(lenn+1, nogil=True, num_threads= threads):
+    if bias_term:  lenn2+= 1
+    for ii in prange(lenn2, nogil=True, num_threads= threads):
         if ii!=lenn:
             i= inds[ii]
             v= vals[ii]
@@ -30,15 +31,17 @@ cdef double predict_single(int* inds, double* vals, int lenn, double L1, double 
             v= 1.0
         sign = -1.0 if z[i] < 0 else 1.0
         if sign * z[i] <= L1:  w[i] = 0.0
-        else:  w[i] = (sign * L1 - z[i]) / ((beta + sqrt(n[i])) / alpha + L2)
-        e += w[i] * v
+        else:
+            w[i] = (sign * L1 - z[i]) / ((beta + sqrt(n[i])) / alpha + L2)
+            e += w[i] * v
     return e
 
 cdef void update_single(int* inds, double* vals, int lenn, double e, double alpha, double[::1] w, double[::1] z,
-                        double[::1] n, int threads) nogil:
-    cdef int i, ii
+                        double[::1] n, bint bias_term, int threads) nogil:
+    cdef int i, ii, lenn2= lenn
     cdef double g, g2, v
-    for ii in prange(lenn+1, nogil=True, num_threads= threads):
+    if bias_term:  lenn2+= 1
+    for ii in prange(lenn2, nogil=True, num_threads= threads):
         if ii!=lenn:
             i= inds[ii]
             v= vals[ii]
@@ -54,7 +57,6 @@ cdef class FTRL:
     cdef double[::1] w
     cdef double[::1] z
     cdef double[::1] n
-
     cdef unsigned int threads
     cdef unsigned int iters
     cdef unsigned int D
@@ -73,7 +75,6 @@ cdef class FTRL:
                  unsigned int iters=1,
                  int threads= 0,
                  inv_link= "sigmoid"):
-
         self.alpha= alpha
         self.beta= beta
         self.L1= L1
@@ -88,16 +89,16 @@ cdef class FTRL:
         self.z= np.zeros((self.D,), dtype=np.float64)
         self.n= np.zeros((self.D,), dtype=np.float64)
 
-    def predict(self, X, int threads= 0):
+    def predict(self, X, bint bias_term= True, int threads= 0):
         if threads==0:  threads= self.threads
         if type(X) != ssp.csr.csr_matrix:  X= ssp.csr_matrix(X, dtype=np.float64)
 # return self.predict_f(X, np.ascontiguousarray(X.data), np.ascontiguousarray(X.indices),
 #               np.ascontiguousarray(X.indptr), threads)
-        return self.predict_f(X.data, X.indices, X.indptr, threads)
+        return self.predict_f(X.data, X.indices, X.indptr, bias_term, threads)
 
     def predict_f(self, np.ndarray[double, ndim=1, mode='c'] X_data,
                     np.ndarray[int, ndim=1, mode='c'] X_indices,
-                    np.ndarray[int, ndim=1, mode='c'] X_indptr, int threads):
+                    np.ndarray[int, ndim=1, mode='c'] X_indptr, bint bias_term, int threads):
         p= np.zeros(X_indptr.shape[0]-1, dtype= np.float64)
         cdef int lenn, row_count= X_indptr.shape[0]-1, row, ptr
 
@@ -109,20 +110,20 @@ cdef class FTRL:
             inds= <int*> X_indices.data + ptr
             vals= <double*> X_data.data + ptr
             p[row]= inv_link_f(predict_single(inds, vals, lenn, self.L1, self.L2, self.alpha, self.beta, self.w, self.z,
-                                             self.n, threads), self.inv_link)
+                                             self.n, bias_term, threads), self.inv_link)
         return p
 
-    def fit(self, X, y, int threads= 0):
+    def fit(self, X, y, bint bias_term= True, int threads= 0):
         if threads == 0:  threads= self.threads
         if type(X) != ssp.csr.csr_matrix:  X = ssp.csr_matrix(X, dtype=np.float64)
         if type(y) != np.array:  y = np.array(y, dtype=np.float64)
         # self.fit_f(X, np.ascontiguousarray(X.data), np.ascontiguousarray(X.indices),
         #           np.ascontiguousarray(X.indptr), y, threads)
-        self.fit_f(X.data, X.indices, X.indptr, y, threads)
+        self.fit_f(X.data, X.indices, X.indptr, y, threads, bias_term)
 
     def fit_f(self, np.ndarray[double, ndim=1, mode='c'] X_data,
                     np.ndarray[int, ndim=1, mode='c'] X_indices,
-                    np.ndarray[int, ndim=1, mode='c'] X_indptr, y, int threads):
+                    np.ndarray[int, ndim=1, mode='c'] X_indptr, y, bint bias_term, int threads):
         cdef double alpha= self.alpha, beta= self.beta, L1= self.L1, L2= self.L2
         cdef double[::1] w= self.w, z= self.z, n= self.n, ys= y
         cdef int lenn, ptr, row_count= X_indptr.shape[0]-1, row
@@ -137,9 +138,9 @@ cdef class FTRL:
                 inds= <int*> X_indices.data+ptr
                 vals= <double*> X_data.data+ptr
                 update_single(inds, vals, lenn,
-                              inv_link_f(predict_single(inds, vals, lenn, L1, L2, alpha, beta, w, z, n, threads),
-                                       self.inv_link)-ys[row],
-                              alpha, w, z, n, threads)
+                              inv_link_f(predict_single(inds, vals, lenn, L1, L2, alpha, beta, w, z, n, bias_term,
+                                                        threads),
+                                         self.inv_link)-ys[row], alpha, w, z, n, bias_term, threads)
 
     def pickle_model(self, filename):
         with gzip.open(filename, 'wb') as model_file:
