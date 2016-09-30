@@ -15,6 +15,7 @@ import scipy.sparse as ssp
 import scipy as sp
 import numpy as np
 import gzip
+import lz4framed
 import array
 import sys
 import random
@@ -28,7 +29,6 @@ from libc.math cimport log
 cimport numpy as np
 cdef inline int int_max(int a, int b): return a if a >= b else b
 cdef inline int int_min(int a, int b): return a if a <= b else b
-import pp
 
 np.import_array()
 
@@ -112,6 +112,13 @@ def get_deletions(word, order):
                 results[word2[:x] + word2[x + 1:]] = 1
         stack = stack2
     return list(results.keys())
+
+def save_to_lz4(file, input, dtype, level= 0):
+    with open(file, 'wb') as f:  f.write(lz4framed.compress(np.array(input, dtype=dtype).tostring(), level))
+
+def load_from_lz4(file, dtype):
+    with open(file, 'rb') as f:  input= np.fromstring(lz4framed.decompress(f.read()), dtype=dtype)
+    return input
 
 non_alphanums= re.compile('[^A-Za-z0-9]+')
 def default_normalize_text(text):
@@ -225,17 +232,24 @@ class WordBatch(object):
         if not(self.dictionary_freeze):  self.update_dictionary(texts, self.dft, self.dictionary, self.min_count)
         return texts
 
-    def fit_transform(self, texts, labels=None):  return self.transform(texts, labels)
+    def fit_transform(self, texts, labels=None):  return self.transform(texts, labels, cache_file= None)
 
     def partial_fit(self, texts, labels=None):  return self.fit(texts, labels)
 
-    def transform(self, texts, labels= None, extractors= None):
+    def transform(self, texts, labels= None, extractors= None, cache_features= None):
         if extractors== None:  extractors= self.extractors
-        if extractors== []: return texts
+        if cache_features!=None and os.path.exists(cache_features + "_0.lz4"):
+            features= [extractors[x].load_features(cache_features + "_" + str(x)+".lz4")
+                        for x in range(len(extractors))]
+            if len(extractors)== 1:  features= features[0]
+            return features
         texts= self.fit(texts)
-        features= []
-        for extractor in extractors:  features.append(extractor.transform(texts))
-        if len(features)==1: return features[0]
+        if extractors!= []:  features= [extractor.transform(texts) for extractor in extractors]
+        else:  features= texts
+        if cache_features!=None:
+            for x in range(len(extractors)):
+                extractors[x].save_features(cache_features + "_" + str(x)+".lz4", features[x])
+        if len(extractors) == 1:  features= features[0]
         return features
 
     def parallelize_batches(self, procs, task, texts, argss, method="multiprocessing", timeout=-1):
@@ -262,6 +276,7 @@ class WordBatch(object):
                             results.wait(timeout=timeout)
                             if results.ready():  results= results.get()
                             else:  raise ValueError('Parallelization timeout')
+                    return results
                 elif method=="threading":
                     with closing(multiprocessing.dummy.Pool(max(1,procs))) as pool:
                        results= pool.map(task, paral_params)
@@ -409,6 +424,25 @@ class WordBag():
         if self.wb.verbose > 0:  print "Extract wordbags"
         return ssp.vstack(self.wb.parallelize_batches(int(self.wb.procs / 2),  self.batch_get_wordbags, texts, []))
 
+    def save_features(self, file, features):
+        #with open(file, 'wb') as f:  f.write(lz4framed.compress(np.array(features.indptr, dtype=int).tostring()))
+        #with open(file+".i", 'wb') as f:  f.write(lz4framed.compress(np.array(features.indices, dtype=int).tostring()))
+        #with open(file+".d", 'wb') as f:  f.write(lz4framed.compress(np.array(features.data, dtype=np.float64).tostring()))
+        save_to_lz4(file, features.indptr, dtype=int)
+        save_to_lz4(file+".i", features.indices, dtype=int)
+        save_to_lz4(file+".d", features.indices, dtype=np.float64)
+        #sp.io.mmwrite(file, features)
+
+    def load_features(self, file):
+        #with open(file, 'rb') as f:  indptr= np.fromstring(lz4framed.decompress(f.read()), dtype=int)
+        #with open(file+".i", 'rb') as f:  indices= np.fromstring(lz4framed.decompress(f.read()), dtype=int)
+        #with open(file+".d", 'rb') as f:  data= np.fromstring(lz4framed.decompress(f.read()), dtype=np.float64)
+        indptr= load_from_lz4(file, int)
+        indices= load_from_lz4(file+".i", int)
+        data= load_from_lz4(file+".d", np.float64)
+        return ssp.csr_matrix((data, indices, indptr))
+        #return ssp.csr_matrix(sp.io.mmread(file))
+
 class WordHash():
     def __init__(self, wb, fea_cfg):
         self.wb= wb
@@ -495,11 +529,3 @@ class WordVec():
         if self.wb.verbose > 0:  print "Extract wordvecs"
         return [item for sublist in self.wb.parallelize_batches(self.wb.procs, self.batch_get_wordvecs, texts, [])
                 for item in sublist]
-
-class NormText():
-    def __init__(self, wb, fea_cfg):
-        self.wb = wb
-
-    def transform(self, texts):
-        if self.wb.verbose > 0:  print "Return normalized text"
-        return texts
