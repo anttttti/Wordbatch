@@ -25,7 +25,7 @@ setup(
         "Topic :: Scientific/Engineering :: Artificial Intelligence",
         "Topic :: Software Development :: Libraries :: Python Modules",
     ],
-    install_requires=['cython', 'scikit-learn', 'python-Levenshtein'], 
+    install_requires=['cython', 'scikit-learn', 'python-Levenshtein', 'py-lz4framed'], 
     extras_require={'dev': ['nltk', 'textblob', 'neon', 'pandas']},
     
         
