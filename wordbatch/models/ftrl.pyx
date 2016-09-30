@@ -16,10 +16,10 @@ cdef double inv_link_f(double e, int inv_link):
     if inv_link==1:  return 1.0 / (1.0 + exp(-fmax(fmin(e, 35.0), -35.0)))
     return e
 
-cdef double predict_single(int* inds, double* vals, int lenn, double L1, double L2, double alpha, double beta,
+cdef double predict_single(int* inds, double* vals, int lenn, double L1, double baL2, double alpha,
                 double[:] w, double[:] z, double[:] n, bint bias_term, int threads) nogil:
     cdef int i, ii, lenn2= lenn
-    cdef double sign, v
+    cdef double sign, v, zi, wi
     cdef double e= 0.0
     if bias_term:  lenn2+= 1
     for ii in prange(lenn2, nogil=True, num_threads= threads):
@@ -29,17 +29,18 @@ cdef double predict_single(int* inds, double* vals, int lenn, double L1, double 
         else:
             i= 0
             v= 1.0
-        sign = -1.0 if z[i] < 0 else 1.0
-        if sign * z[i] > L1:
-            w[i] = (sign * L1 - z[i]) / ((beta + sqrt(n[i])) / alpha + L2)
-            e += w[i] * v
+        zi= z[i]
+        sign = -1.0 if zi < 0 else 1.0
+        if sign * zi  > L1:
+            wi= w[i] = (sign * L1 - zi) / (sqrt(n[i])/alpha + baL2)
+            e+= wi * v
         else:  w[i] = 0.0
     return e
 
 cdef void update_single(int* inds, double* vals, int lenn, double e, double alpha, double[:] w, double[:] z,
                         double[:] n, bint bias_term, int threads) nogil:
     cdef int i, ii, lenn2= lenn
-    cdef double g, g2, v
+    cdef double g, g2, v, ni
     if bias_term:  lenn2+= 1
     for ii in prange(lenn2, nogil=True, num_threads= threads):
         if ii!=lenn:
@@ -50,7 +51,8 @@ cdef void update_single(int* inds, double* vals, int lenn, double e, double alph
             v= 1.0
         g = e * v
         g2 = g * g
-        z[i] += g - ((sqrt(n[i] + g2) - sqrt(n[i])) / alpha) * w[i]
+        ni= n[i]
+        z[i] += g - ((sqrt(ni + g2) - sqrt(ni)) / alpha) * w[i]
         n[i] += g2
 
 cdef class FTRL:
@@ -104,6 +106,7 @@ cdef class FTRL:
     def predict_f(self, np.ndarray[double, ndim=1, mode='c'] X_data,
                     np.ndarray[int, ndim=1, mode='c'] X_indices,
                     np.ndarray[int, ndim=1, mode='c'] X_indptr, int threads):
+        cdef double alpha= self.alpha, L1= self.L1
         p= np.zeros(X_indptr.shape[0]-1, dtype= np.float64)
         cdef double[:] w= self.w, z= self.z, n= self.n
         cdef double[:] pp= p
@@ -111,12 +114,13 @@ cdef class FTRL:
         cdef bint bias_term= self.bias_term
         cdef int* inds2, indptr2
         cdef double* vals2
+        cdef double baL2= self.beta/self.alpha+self.L2
         for row in range(row_count):
             ptr= X_indptr[row]
             lenn= X_indptr[row + 1] - ptr
             inds= <int*> X_indices.data + ptr
             vals= <double*> X_data.data + ptr
-            pp[row]= inv_link_f(predict_single(inds, vals, lenn, self.L1, self.L2, self.alpha, self.beta, w, z, n,
+            pp[row]= inv_link_f(predict_single(inds, vals, lenn, L1, baL2, alpha, w, z, n,
                                                bias_term, threads), self.inv_link)
         return p
 
@@ -131,12 +135,13 @@ cdef class FTRL:
     def fit_f(self, np.ndarray[double, ndim=1, mode='c'] X_data,
                     np.ndarray[int, ndim=1, mode='c'] X_indices,
                     np.ndarray[int, ndim=1, mode='c'] X_indptr, y, int threads):
-        cdef double alpha= self.alpha, beta= self.beta, L1= self.L1, L2= self.L2
+        cdef double alpha= self.alpha, L1= self.L1
         cdef double[:] w= self.w, z= self.z, n= self.n, ys= y
         cdef int lenn, ptr, row_count= X_indptr.shape[0]-1, row
         cdef bint bias_term= self.bias_term
         cdef int* inds, indptr
         cdef double* vals
+        cdef double baL2= self.beta/self.alpha+self.L2
         for iters in range(self.iters):
             for row in range(row_count):
                 ptr= X_indptr[row]
@@ -144,7 +149,7 @@ cdef class FTRL:
                 inds= <int*> X_indices.data+ptr
                 vals= <double*> X_data.data+ptr
                 update_single(inds, vals, lenn,
-                              inv_link_f(predict_single(inds, vals, lenn, L1, L2, alpha, beta, w, z, n, bias_term,
+                              inv_link_f(predict_single(inds, vals, lenn, L1, baL2, alpha, w, z, n, bias_term,
                                                         threads),
                                          self.inv_link)-ys[row], alpha, w, z, n, bias_term, threads)
 
