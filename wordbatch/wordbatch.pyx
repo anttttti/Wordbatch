@@ -58,7 +58,7 @@ def batch_normalize_texts(args):
 def correct_spelling(word, dft, spell_index, spellcor_count, spellcor_dist):
     #T. Bocek, E. Hunt, B. Stiller: Fast Similarity Search in Large Dictionaries, 2007
     if dft.get(word, 0)>spellcor_count or len(word)<3:  return word
-    max_count= -100000000000000
+    max_df= -100000000000000
     max_word= word
     spell_suggestions= get_deletions(word, spellcor_dist)
     candidates= {}
@@ -73,8 +73,8 @@ def correct_spelling(word, dft, spell_index, spellcor_count, spellcor_dist):
         score= dft[word2]
         #score = Levenshtein.jaro_winkler(word, word2)
         #score= dft[word2]*Levenshtein.jaro_winkler(word, word2)
-        if score > max_count:
-            max_count= score
+        if score > max_df:
+            max_df= score
             max_word= word2
     return max_word
 
@@ -126,7 +126,7 @@ def default_normalize_text(text):
 
 class WordBatch(object):
     def __init__(self, normalize_text= default_normalize_text, spellcor_count=0, spellcor_dist= 2, n_words= 10000000,
-                 min_count= 0, max_count= 1.0, raw_min_count= 0, procs= 0, verbose= 1, minibatch_size= 20000,
+                 min_df= 0, max_df= 1.0, raw_min_df= 0, procs= 0, verbose= 1, minibatch_size= 20000,
                  stemmer= None, pos_tagger= None, extractors=[("wordbag",{})], timeout= 300):
         if procs==0:  procs= multiprocessing.cpu_count()
         self.procs= procs
@@ -145,13 +145,13 @@ class WordBatch(object):
         self.spellcor_count= spellcor_count
         self.spellcor_dist= spellcor_dist
         self.stemmer= stemmer
-        self.raw_min_count= raw_min_count
+        self.raw_min_df= raw_min_df
         self.pos_tagger= pos_tagger
 
         self.doc_count= 0
         self.n_words= n_words
-        self.min_count= min_count
-        self.max_count= max_count
+        self.min_df= min_df
+        self.max_df= max_df
 
         for x in range(len(extractors)):
             if type(extractors[x])!=tuple and type(extractors[x])!=list:
@@ -163,34 +163,33 @@ class WordBatch(object):
             extractors[x]= extractor(self, fea_cfg)
         self.extractors= extractors
 
-    def update_dictionary(self, texts, dft, dictionary, min_count):
-        self.doc_count+= len(texts)
+    def update_dictionary(self, texts, dft, dictionary, min_df):
         for dft2 in self.parallelize_batches(self.procs, batch_get_dfs, texts, []): dft.update(dft2)
 
         if dictionary!=None:
             sorted_dft = sorted(list(dft.items()), key=operator.itemgetter(1), reverse=True)
-            for word, count in sorted_dft:
+            for word, df in sorted_dft:
                 if len(dictionary)>= self.n_words: break
                 if word in dictionary:  continue
-                if type(self.min_count)==type(1):
-                    if count<self.min_count:  continue
+                if type(self.min_df)==type(1):
+                    if df<self.min_df:  continue
                 else:
-                    if float(count)/self.doc_count < self.min_count:  continue
-                if type(self.max_count)==type(1):
-                    if count > self.max_count:  continue
+                    if float(df)/self.doc_count < self.min_df:  continue
+                if type(self.max_df)==type(1):
+                    if df > self.max_df:  continue
                 else:
-                    if float(count)/self.doc_count > self.max_count:  continue
+                    if float(df)/self.doc_count > self.max_df:  continue
                 dictionary[word] = len(dictionary)
                 if self.verbose>1: print "Add word to dictionary:", word, dft[word], dictionary[word]
 
-        if min_count>0:
+        if min_df>0:
             if self.verbose>2: print "Document Frequency Table size:", len(dft)
-            if type(min_count) == type(1):
+            if type(min_df) == type(1):
                 for word in list(dft.keys()):
-                    if dft[word]<min_count:  dft.pop(word)
+                    if dft[word]<min_df:  dft.pop(word)
             else:
                 for word in list(dft.keys()):
-                    if float(dft[word])/self.doc_count < min_count:  dft.pop(word)
+                    if float(dft[word])/self.doc_count < min_df:  dft.pop(word)
             if self.verbose > 2: print "Document Frequency Table pruned size:", len(dft)
 
     def normalize_texts(self, texts):
@@ -226,13 +225,14 @@ class WordBatch(object):
         if self.normalize_text != None:  texts= self.normalize_texts(texts)
         if self.spellcor_count> 0 or self.stemmer!=None:
             if self.verbose > 0:  print "Update raw dfts"
-            self.update_dictionary(texts, self.raw_dft, None, self.raw_min_count)
+            self.update_dictionary(texts, self.raw_dft, None, self.raw_min_df)
             if self.verbose > 0:  print "Normalize wordforms"
             texts= self.normalize_wordforms(texts)
-        if not(self.dictionary_freeze):  self.update_dictionary(texts, self.dft, self.dictionary, self.min_count)
+        if not(self.dictionary_freeze):  self.update_dictionary(texts, self.dft, self.dictionary, self.min_df)
         return texts
 
-    def fit_transform(self, texts, labels=None):  return self.transform(texts, labels, cache_file= None)
+    def fit_transform(self, texts, labels=None, cache_features= None):  return self.transform(texts, labels,
+                                                                                              cache_features)
 
     def partial_fit(self, texts, labels=None):  return self.fit(texts, labels)
 
@@ -312,6 +312,12 @@ class WordBatch(object):
     def predict_parallel(self, texts, clf):
         return sp.vstack(self.parallelize_batches(self.procs / 2, self.batch_apply_func, texts, [clf.predict]))[0]
 
+    def __getstate__(self):
+        return dict((k, v) for (k, v) in self.__dict__.iteritems())
+
+    def __setstate__(self, params):
+        for key in params:  setattr(self, key, params[key])
+
 cdef class TextRow:
     cdef list indices, data
     cdef dict fea_weights
@@ -344,17 +350,17 @@ class WordBag():
     def get_wordbag(self, text):
         wb= self.wb
         cdef int fc_hash_ngrams= self.hash_ngrams, word_id, df= 1, df2, hashed, doc_count= wb.doc_count, use_idf= 0
-        cdef float idf_lift= 0.0, idf= 1.0, weight, norm= 1.0
+        cdef float idf_lift= 0.0, idf= 1.0, weight, norm= 1.0, norm_idf= 1.0
         if self.idf!= None:
             use_idf= True
             idf_lift= self.idf
+            norm_idf= 1.0 / log(max(1.0, idf_lift + doc_count))
         cdef int fc_hash_size= self.hash_size
         fc_hash_ngrams_weights= self.hash_ngrams_weights
         fc_tf= self.tf
         fc_norm= self.norm
-        cdef int fc_hash_polys_window= self.hash_polys_window
-        cdef int fc_hash_polys_mindf= self.hash_polys_mindf
-        cdef float fc_hash_polys_maxdf= self.hash_polys_maxdf
+        cdef int fc_hash_polys_window= self.hash_polys_window, fc_hash_polys_mindf= self.hash_polys_mindf
+        cdef float fc_hash_polys_maxdf= self.hash_polys_maxdf, fc_hash_polys_weight= self.hash_polys_weight
 
         text= text.split()
         cdef TextRow textrow= TextRow()
@@ -363,7 +369,7 @@ class WordBag():
             if not(wb.dictionary_freeze):  df= wb.dft[word]
             if df==0: continue
             if use_idf:
-                idf= log(max(1.0, idf_lift + doc_count / df))
+                idf= log(max(1.0, idf_lift + doc_count / df)) * norm_idf
                 if idf== 0.0:  continue
 
             if fc_hash_ngrams==0:
@@ -378,14 +384,17 @@ class WordBag():
                 textrow.append(abs(hashed) % fc_hash_size, (hashed >= 0) * 2 - 1, weight)
 
             if fc_hash_polys_window!=0:
-                if df< fc_hash_polys_mindf or float(df)/wb.doc_count> fc_hash_polys_maxdf:  continue
-                for y from max(1, fc_hash_ngrams) <= y < min(fc_hash_polys_window, x+1):
+                if doc_count!=0:
+                    if df< fc_hash_polys_mindf or float(df)/wb.doc_count> fc_hash_polys_maxdf:  continue
+                #for y from max(1, fc_hash_ngrams) <= y < min(fc_hash_polys_window, x+1):
+                for y from 1 <= y < min(fc_hash_polys_window, x+1):
                     word2= text[x-y]
-                    df2= wb.dft[word2]
-                    if df2< fc_hash_polys_mindf or float(df2)/wb.doc_count> fc_hash_polys_maxdf:  continue
-                    hashed= murmurhash3_bytes_s32(word+"#"+word2,0) if word<word2 else \
-                                                  murmurhash3_bytes_s32(word2+"#"+word, 0)
-                    weight= self.hash_polys_weight
+                    if doc_count!=0:
+                        df2= wb.dft[word2]
+                        if df2< fc_hash_polys_mindf or float(df2)/wb.doc_count> fc_hash_polys_maxdf:  continue
+                    hashed= murmurhash3_bytes_s32((word+"#"+word2).encode("utf-8"),0) if word<word2 \
+                        else murmurhash3_bytes_s32((word2+"#"+word).encode("utf-8"), 0)
+                    weight= fc_hash_polys_weight
                     #if weight<0.0: weight= np.abs(weight) * 1.0/np.log(1+y)
                     if weight < 0.0: weight= np.abs(weight) * 1.0 / log(1 + y)
                     #print word, word2, df, df2, x, y, abs(hashed) % fc_hash_size, (hashed >= 0) * 2 - 1, weight
@@ -425,23 +434,15 @@ class WordBag():
         return ssp.vstack(self.wb.parallelize_batches(int(self.wb.procs / 2),  self.batch_get_wordbags, texts, []))
 
     def save_features(self, file, features):
-        #with open(file, 'wb') as f:  f.write(lz4framed.compress(np.array(features.indptr, dtype=int).tostring()))
-        #with open(file+".i", 'wb') as f:  f.write(lz4framed.compress(np.array(features.indices, dtype=int).tostring()))
-        #with open(file+".d", 'wb') as f:  f.write(lz4framed.compress(np.array(features.data, dtype=np.float64).tostring()))
         save_to_lz4(file, features.indptr, dtype=int)
         save_to_lz4(file+".i", features.indices, dtype=int)
-        save_to_lz4(file+".d", features.indices, dtype=np.float64)
-        #sp.io.mmwrite(file, features)
+        save_to_lz4(file+".d", features.data, dtype=np.float64)
 
     def load_features(self, file):
-        #with open(file, 'rb') as f:  indptr= np.fromstring(lz4framed.decompress(f.read()), dtype=int)
-        #with open(file+".i", 'rb') as f:  indices= np.fromstring(lz4framed.decompress(f.read()), dtype=int)
-        #with open(file+".d", 'rb') as f:  data= np.fromstring(lz4framed.decompress(f.read()), dtype=np.float64)
         indptr= load_from_lz4(file, int)
         indices= load_from_lz4(file+".i", int)
         data= load_from_lz4(file+".d", np.float64)
         return ssp.csr_matrix((data, indices, indptr))
-        #return ssp.csr_matrix(sp.io.mmread(file))
 
 class WordHash():
     def __init__(self, wb, fea_cfg):
