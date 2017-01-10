@@ -59,3 +59,11 @@ The directory /scripts/ contains four scripts for demonstrating the basic extrac
 - wordseq_regressor.py shows wordbatch.WordSeq, and training a Bi-LSTM regression model
 - wordvec_regressor.py shows wordbatch.WordVec, and combining word vector embeddings for FTRL training
 - classify_airline_sentiment.py show how to combine predictions from the four scripts using a Random Forest Regressor on the airline sentiment data
+
+Spark integration
+=================
+Starting from 1.2, Wordbatch has full spark integration. All processing steps will be parallelized by Spark, simply by setting wb.use_sc=True and providing data in the RDD format produced by wb.lists2rddbatches(texts). 
+
+A basic script using this is wordbag_regressor_spark.py, which is the wordbag_regressor.py script modified to run on Spark. This converts each minibatch of training data into an RDD, does feature extraction on the RDD, and collects the resulting features for local FTRL model training. A more practical script should read the data from parallelized storage, and implement model training on the RDD as well.
+
+Parallel prediction is also demonstrated in wordbag_regressor_spark.py. By calling the class with predict_parallel(), it will parallelize prediction either locally or on Spark, depending on whether a SparkContext has been set for the class.

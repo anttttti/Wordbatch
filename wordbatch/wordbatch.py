@@ -1,10 +1,7 @@
 #!python
-import os
 import multiprocessing
 import copy_reg
 import types
-from sklearn.utils.murmurhash import murmurhash3_32
-from sklearn.feature_extraction.text import HashingVectorizer
 from contextlib import closing
 from collections import Counter
 import operator
@@ -12,10 +9,6 @@ import operator
 import Levenshtein #python-Levenshtein
 import scipy.sparse as ssp
 import scipy as sp
-import numpy as np
-import gzip
-import array
-import sys
 import random
 import re
 
@@ -34,6 +27,9 @@ def batch_get_dfs(args):
 def batch_normalize_texts(args):
     normalize_text= args[1]
     return [normalize_text(text) for text in args[0]]
+
+def batch_predict(args):
+    return args[1].predict(args[0])
 
 def correct_spelling(word, dft, spell_index, spellcor_count, spellcor_dist):
     #T. Bocek, E. Hunt, B. Stiller: Fast Similarity Search in Large Dictionaries, 2007
@@ -227,7 +223,7 @@ class WordBatch(object):
             batch_count+= 1
         return sc.parallelize(batches)
 
-    def rddbatches2lists(self, rddbatches, minibatch_size=0, sort= True):
+    def rddbatches2lists(self, rddbatches, sort= True):
         batches= rddbatches.collect()
         if sort:  batches= sorted(batches)
         texts= []
@@ -235,7 +231,6 @@ class WordBatch(object):
         for batch in batches:
             texts.append(batch[1])
             labels.append(batch[2])
-
         if isinstance(texts[0], ssp.csr_matrix):  texts= ssp.vstack(texts)
         else:  texts= [item for sublist in texts for item in sublist]
         labels= [item for sublist in labels for item in sublist]
@@ -301,12 +296,16 @@ class WordBatch(object):
         labels= [labels[x] for x in index_shuf]
         return texts, labels
 
-    def batch_apply_func(self, args):
-        fnc= args[1]
-        return fnc(args[0])
+    #def batch_predict(self, args):
+    #    fnc= args[1]
+    #    return fnc(args[0])
+
 
     def predict_parallel(self, texts, clf):
-        return sp.vstack(self.parallelize_batches(self.procs / 2, self.batch_apply_func, texts, [clf.predict]))[0]
+        #return sp.vstack(self.parallelize_batches(self.procs / 2, self.batch_apply_func, texts, [clf.predict]))[0]
+        results= self.parallelize_batches(self.procs / 2, batch_predict, texts, [clf])
+        if self.use_sc== True:  return results
+        return sp.vstack(results)[0]
 
     def __getstate__(self):
         return dict((k, v) for (k, v) in self.__dict__.iteritems())
