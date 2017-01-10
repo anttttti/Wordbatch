@@ -6,6 +6,7 @@ import gzip
 from sklearn.linear_model import *
 import scipy.sparse as ssp
 import wordbatch
+from wordbatch.extractors import WordHash
 from threading import Thread
 
 non_alphanums = re.compile(u'[\W]')
@@ -24,8 +25,8 @@ def normalize_text(text):
 class WordhashRegressor(object):
     def __init__(self, pickle_model="", datadir=None):
         self.wordbatch= wordbatch.WordBatch(normalize_text,
-                                             extractors=[(wordbatch.WordHash, {"decode_error":'ignore', "n_features":2 ** 25,
-                                             "non_negative":False, "ngram_range":(1,2), "norm":'l2'})])
+                                             extractor=(WordHash, {"decode_error":'ignore', "n_features":2 ** 25,
+                                             "non_negative":False, "ngram_range":(1,2), "norm":'l2'}))
         self.clf= Ridge(alpha=1.0, random_state=0)
         if datadir==None:  (self.wordbatch, self.clf)= pkl.load(gzip.open(pickle_model, u'rb'))
         else: self.train(datadir, pickle_model)

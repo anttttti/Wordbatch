@@ -15,6 +15,7 @@ from neon.transforms import *
 from neon.util.argparser import NeonArgparser, extract_valid_args
 from neon.callbacks.callbacks import Callbacks
 import wordbatch
+from wordbatch.extractors import WordSeq
 import random
 from threading import Thread
 
@@ -54,7 +55,7 @@ class WordseqRegressor():
         ]
 
         self.wordbatch= wordbatch.WordBatch(normalize_text, n_words=self.n_words,
-                                             extractors=[(wordbatch.WordSeq, {"seq_maxlen": self.maxlen})])
+                                             extractor=(WordSeq, {"seq_maxlen": self.maxlen}))
 
         if datadir == None:
             self.model= Model(self.layers)

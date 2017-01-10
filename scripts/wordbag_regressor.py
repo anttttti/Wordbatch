@@ -5,6 +5,7 @@ import pickle as pkl
 import gzip
 import wordbatch
 from wordbatch.models import FTRL
+from wordbatch.extractors import WordBag
 import threading
 
 non_alphanums = re.compile(u'[\W]')
@@ -22,8 +23,8 @@ def normalize_text(text):
 
 class WordbagRegressor(object):
     def __init__(self, pickle_model="", datadir=None):
-        self.wordbatch = wordbatch.WordBatch(normalize_text, extractors=[(wordbatch.WordBag, {"hash_ngrams":3,
-          "hash_ngrams_weights":[-1.0, -1.0, 1.0],"hash_size":2**23, "norm":'l2', "tf":'binary', "idf":50.0})])
+        self.wordbatch = wordbatch.WordBatch(normalize_text, extractor=(WordBag, {"hash_ngrams":3,
+          "hash_ngrams_weights":[-1.0, -1.0, 1.0],"hash_size":2**23, "norm":'l2', "tf":'binary', "idf":50.0}))
         self.clf= FTRL(alpha=1.0, beta=1.0, L1=0.00001, L2=1.0, D=2 ** 25, iters=1, inv_link="identity")
         if datadir==None:  (self.wordbatch, self.clf)= pkl.load(gzip.open(pickle_model, u'rb'))
         else: self.train(datadir, pickle_model)

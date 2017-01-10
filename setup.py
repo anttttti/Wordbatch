@@ -5,13 +5,14 @@ import numpy
 
 setup(
     name='Wordbatch',
-    version='1.1.0',
+    version='1.2.0',
     description='Parallel text feature extraction for machine learning',
     url='https://github.com/anttttti/Wordbatch',
     author='Antti Puurula',
     author_email='antti.puurula@yahoo.com',
 
     packages=['wordbatch',
+              'wordbatch.extractors',
               'wordbatch.models'
     ],    
 
@@ -26,20 +27,20 @@ setup(
         "Topic :: Software Development :: Libraries :: Python Modules",
     ],
     install_requires=['cython', 'scikit-learn', 'python-Levenshtein', 'py-lz4framed'], 
-    extras_require={'dev': ['nltk', 'textblob', 'neon', 'pandas']},
+    extras_require={'dev': ['nltk', 'textblob', 'neon', 'pandas', 'pyspark']},
     
         
-    cmdclass = {'build_ext': build_ext},
-    ext_modules = [Extension("wordbatch.wordbatch",
-                             ["wordbatch/wordbatch.pyx", "wordbatch/MurmurHash3.cpp"],
-                             libraries= [],
-                             include_dirs=[numpy.get_include(), '.'],
-                             extra_compile_args = ["-O3", "-ffast-math"]),
-                   Extension("wordbatch.models.ftrl",
-                             ["wordbatch/models/ftrl.pyx"],
-                             libraries= [],
-                             include_dirs=[numpy.get_include(), '.'],
-                             extra_compile_args = ["-O3", "-fopenmp", "-ffast-math"],
-                             extra_link_args=['-fopenmp'])
-    ]
+    cmdclass= {'build_ext': build_ext},
+    ext_modules= [Extension("wordbatch.extractors.extractors",
+                            ["wordbatch/extractors/extractors.pyx", "wordbatch/extractors/MurmurHash3.cpp"],
+                            libraries= [],
+                            include_dirs=[numpy.get_include(), '.'],
+                            extra_compile_args = ["-O3", "-ffast-math"]),
+                  Extension("wordbatch.models.ftrl",
+                            ["wordbatch/models/ftrl.pyx"],
+                            libraries= [],
+                            include_dirs=[numpy.get_include(), '.'],
+                            extra_compile_args = ["-O3", "-fopenmp", "-ffast-math"],
+                            extra_link_args=['-fopenmp'])
+        ]
 )

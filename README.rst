@@ -52,7 +52,7 @@ Getting started
 Example scripts
 ===============
 
-The directory /scripts/ contains four scripts for demonstrating the basic extractors, and a Scikit-learn ensemble model to combine predictions. To run the scripts you should first install the dependencies: Nervana Neon, NLTK, TextBlob and Pandas. The scripts also use the TripAdvisor dataset (http://times.cs.uiuc.edu/~wang296/Data/) for training the scripts, and the precomputed word embeddings glove.twitter.27B.100d and glove.6B.50d (http://nlp.stanford.edu/projects/glove/). The test data from Crowdflower Open data & Kaggle is provided in the /data directory.
+The directory /scripts/ contains four scripts for demonstrating the basic extractors, and a Scikit-learn ensemble model to combine predictions. To run the scripts you should first install the dependencies: Nervana Neon, NLTK, TextBlob and Pandas. The scripts also use the TripAdvisor dataset (http://times.cs.uiuc.edu/~wang296/Data/) for training models, and the precomputed word embeddings glove.twitter.27B.100d and glove.6B.50d (http://nlp.stanford.edu/projects/glove/). The test data from Crowdflower Open data & Kaggle is provided in the /data directory.
 
 - wordhash_regressor.py shows wordbatch.WordHash, and feature extraction concurrent with file reading
 - wordhash_regressor.py shows wordbatch.WordBag, and online feature extraction and parallel FTRL training

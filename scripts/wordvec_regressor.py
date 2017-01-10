@@ -6,6 +6,7 @@ import gzip
 import scipy as sp
 import wordbatch
 from wordbatch.models import FTRL
+from wordbatch.extractors import WordVec, Hstack
 import threading
 
 non_alphanums = re.compile(u'[\W]')
@@ -22,12 +23,12 @@ def normalize_text(text):
 class WordvecRegressor(object):
     def __init__(self, pickle_model="", datadir=None):
         self.wordbatch= wordbatch.WordBatch(normalize_text,
-                                            extractors=[
-                     (wordbatch.WordVec, {"wordvec_file": "../data/word2vec/glove.twitter.27B.100d.txt.gz",
-                                                        "normalize_text": normalize_text}),
-                     (wordbatch.WordVec, {"wordvec_file": "../data/word2vec/glove.6B.50d.txt.gz",
-                                                 "normalize_text": normalize_text})
-                     ])
+                                            extractor=(Hstack,
+                                   [(WordVec, {"wordvec_file": "../../../data/word2vec/glove.twitter.27B.100d.txt.gz",
+                                    "normalize_text": normalize_text}),
+                                   (WordVec, {"wordvec_file": "../../../data/word2vec/glove.6B.50d.txt.gz",
+                                 "normalize_text": normalize_text})]))
+
         self.wordbatch.dictionary_freeze= True
 
         self.clf= FTRL(alpha=1.0, beta=1.0, L1=0.00001, L2=1.0, D=2 ** 25, iters=1, inv_link= "identity")
@@ -39,7 +40,6 @@ class WordvecRegressor(object):
         texts, labels = self.wordbatch.shuffle_batch(texts, labels, rcount)
         print "Transforming", rcount
         texts= self.wordbatch.transform(texts)
-        if len(texts) > 1:  texts= sp.hstack(texts)
         print "Training", rcount
         self.clf.fit(texts, labels)
 
@@ -79,5 +79,4 @@ class WordvecRegressor(object):
 
     def predict(self, texts):
         vecs= self.wordbatch.transform(texts)
-        if len(vecs) > 1:  vecs= sp.hstack(vecs)
         return self.clf.predict(vecs)
