@@ -1,10 +1,13 @@
-# Include the license file
 include LICENSE.txt
 
 include wordbatch/__init__.py
-include wordbatch/wordbatch.pyx
-include wordbatch/MurmurHash3.h
-include wordbatch/MurmurHash3.cpp
+include wordbatch/wordbatch.py
+
+include wordbatch/extractors/__init__.py
+include wordbatch/extractors/extractors.pyx
+include wordbatch/extractors/MurmurHash3.cpp
+include wordbatch/extractors/MurmurHash3.h
+
 include wordbatch/models/__init__.py
 include wordbatch/models/ftrl.pyx
 
@@ -13,5 +16,6 @@ include scripts/wordhash_regressor.py
 include scripts/wordseq_regressor.py
 include scripts/wordvec_regressor.py
 include scripts/classify_airline_sentiment.py
+include scripts/wordbag_regressor_spark.py
 
 include data/Tweets.csv

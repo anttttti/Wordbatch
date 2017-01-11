@@ -22,11 +22,13 @@ Starting with 1.1, Wordbatch provides an OpenMP-parallelized version of the FTRL
 
 Wordbatch is written with Cython, and uses concurrent threading, multiprocessing and OpenMP parallelization for circumventing the Python GIL. License is GNU GPL 2.0, and less restrictive licenses are available on request.
 
+Requirements
+============
+Linux. Python 2.7
 
 Installation
 ============
 pip install wordbatch
-
 
 Getting started
 ===============
