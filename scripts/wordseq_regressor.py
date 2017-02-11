@@ -32,12 +32,15 @@ def normalize_text(text):
 class WordseqRegressor():
     def __init__(self, pickle_model="", datadir=None):
         self.maxlen = 100
-        self.n_words = 100000
+        #self.n_words = 100000
+        self.n_words = 20000
         parser = NeonArgparser(__doc__)
         self.args = parser.parse_args()
         self.args.batch_size = self.batch_size = 2048 #
         self.args.deterministic= None
         self.args.rng_seed= 0
+        #self.args.device_id= 1
+        #self.args.backend= 'gpu'
         print extract_valid_args(self.args, gen_backend)
         self.be = gen_backend(**extract_valid_args(self.args, gen_backend))
 
@@ -54,7 +57,7 @@ class WordseqRegressor():
             Affine(1, init_glorot, bias=init_glorot, activation=Identity(), name="Affine")
         ]
 
-        self.wordbatch= wordbatch.WordBatch(normalize_text, n_words=self.n_words,
+        self.wordbatch= wordbatch.WordBatch(normalize_text, n_words=self.n_words-2,
                                              extractor=(WordSeq, {"seq_maxlen": self.maxlen}))
 
         if datadir == None:
@@ -62,11 +65,6 @@ class WordseqRegressor():
             self.model.load_params(pickle_model)
             self.wordbatch= pkl.load(gzip.open(pickle_model + ".wb", 'rb'))
         else: self.train(datadir, pickle_model)
-
-    def remove_unks(self, x):
-        return [[self.n_words if w >= self.n_words else w for w in sen] for sen in x]
-
-    def format_texts(self, texts):  return self.remove_unks(self.wordbatch.transform(texts))
 
     class ThreadWithReturnValue(Thread):
         def __init__(self, group=None, target=None, name=None, args=(), kwargs={}, Verbose=None):
@@ -99,7 +97,7 @@ class WordseqRegressor():
                     for review in line["Reviews"]:
                         rcount+= 1
                         if rcount % 100000 == 0:  print rcount
-                        if rcount % 8 != 0: continue
+                        #if rcount % 8 != 0: continue
                         if "Overall" not in review["Ratings"]: continue
                         texts.append(review["Content"])
                         labels.append((float(review["Ratings"]["Overall"]) - 3) *0.5)
@@ -118,7 +116,7 @@ class WordseqRegressor():
         train = [np.asarray(texts, dtype='int32'), np.asanyarray(labels, dtype='float32')]
         train[1].shape = (train[1].shape[0], 1)
 
-        num_epochs= 10
+        num_epochs= 5
         cost= GeneralizedCost(costfunc=SumSquared())
         self.model= Model(layers=self.layers)
         optimizer= Adam(learning_rate=0.01)
@@ -136,7 +134,7 @@ class WordseqRegressor():
             with gzip.open(pickle_model + ".wb", 'wb') as model_file:  pkl.dump(self.wordbatch, model_file, protocol=2)
 
     def predict_batch(self, texts):
-        input= np.array(self.format_texts(texts))
+        input= np.array(self.wordbatch.transform(texts))
         output= np.zeros((texts.shape[0], 1))
         test= ArrayIterator(input, output, nclass=1, make_onehot=False)
         results= [row[0] for row in self.model.get_outputs(test)]

@@ -9,7 +9,7 @@ import textblob
 from math import *
 import time, datetime
 
-tripadvisor_dir= "../data/tripadvisor/json"
+tripadvisor_dir= "../../../data/tripadvisor/json"
 if __name__ == "__main__":
     start_time= time.time()
     print datetime.datetime.now()

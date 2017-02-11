@@ -8,7 +8,7 @@ from wordbatch.models import FTRL
 from wordbatch.extractors import WordBag
 import threading
 
-non_alphanums = re.compile(u'[\W]')
+non_alphanums = re.compile(u'[\W+]')
 nums_re= re.compile("\W*[0-9]+\W*")
 triples_re= re.compile(ur"(\w)\1{2,}")
 trash_re= [re.compile("<[^>]*>"), re.compile("[^a-z0-9' -]+"), re.compile(" [.0-9'-]+ "), re.compile("[-']{2,}"),
@@ -18,7 +18,7 @@ stemmer= PorterStemmer()
 def normalize_text(text):
     text= text.lower()
     text= nums_re.sub(" NUM ", text)
-    text= " ".join([word for word in non_alphanums.sub(" ",text).split() if len(word)>1])
+    text= " ".join([word for word in non_alphanums.sub(" ",text).strip().split() if len(word)>1])
     return text
 
 class WordbagRegressor(object):
@@ -75,3 +75,7 @@ class WordbagRegressor(object):
     def predict(self, texts):
         counts= self.wordbatch.transform(texts)
         return self.clf.predict(counts)
+
+    def predict_parallel(self, texts):
+        counts= self.wordbatch.transform(texts)
+        return self.wordbatch.predict_parallel(counts, self.clf)

@@ -3,7 +3,7 @@ import multiprocessing
 import copy_reg
 import types
 from contextlib import closing
-from collections import Counter
+from collections import Counter, defaultdict
 import operator
 #from nltk.metrics import edit_distance
 import Levenshtein #python-Levenshtein
@@ -11,6 +11,7 @@ import scipy.sparse as ssp
 import scipy as sp
 import random
 import re
+import os
 
 def _pickle_method(m):
    if m.im_self is None:  return getattr, (m.im_self.__class__, m.im_func.__name__)
@@ -20,7 +21,7 @@ copy_reg.pickle(types.MethodType, _pickle_method)
 def batch_get_dfs(args):
     dft= Counter()
     for text in args[0]:
-        for word in set(text.split()):  dft[word]+= 1
+        for word in set(text.split(" ")):  dft[word]+= 1
     dft['###DOC_CNT###']+= len(args[0]) #Avoid Spark collect() by counting here
     return dft
 
@@ -56,25 +57,18 @@ def correct_spelling(word, dft, spell_index, spellcor_count, spellcor_dist):
 
 def batch_correct_spellings(args):
     corrs= args[1]
-    if args[2]== None: return [u" ".join([corrs.get(word, word) for word in text.split()]) for text in args[0]]
+    if args[2]== None: return [u" ".join([corrs.get(word, word) for word in text.split(" ")]) for text in args[0]]
     res= []
     pos_tagger= args[2]
     for text in args[0]:
         text2= []
         tags= pos_tagger(text)
-        text= text.split()
+        text= text.split(" ")
         for y in range(len(text)):
             word= text[y]
             text2.append(corrs.get(word, word)+"_"+tags[y][1])
         res.append(u" ".join(text2))
     return res
-
-def batch_find_normalizations(args):
-    dft = args[1]
-    stemmer = args[2]
-    spell_index= args[3]
-    spellcor_dist= args[4]
-    return dict((word, stemmer.stem(correct_spelling(word,dft,spell_index,spellcor_dist))) for word in args[0])
 
 def get_deletions(word, order):
     stack = {word: order}
@@ -91,13 +85,12 @@ def get_deletions(word, order):
 
 non_alphanums= re.compile('[^A-Za-z0-9]+')
 def default_normalize_text(text):
-    return " ".join([x for x in [y for y in non_alphanums.sub(' ', text).lower().strip().split()] if len(x)>1])
+    return " ".join([x for x in [y for y in non_alphanums.sub(' ', text).lower().strip().split(" ")] if len(x)>1])
 
 class WordBatch(object):
     def __init__(self, normalize_text= default_normalize_text, spellcor_count=0, spellcor_dist= 2, n_words= 10000000,
-                 min_df= 0, max_df= 1.0, raw_min_df= 0, procs= 0, verbose= 1, minibatch_size= 20000,
-                 stemmer= None, pos_tagger= None, extractor=None, timeout= 300, use_sc= False):
-    #             stemmer=None, pos_tagger=None, extractors=None, timeout=300, use_sc=None):
+                 min_df= 0, max_df= 1.0, raw_min_df= -1, procs= 0, verbose= 1, minibatch_size= 20000,
+                 stemmer= None, pos_tagger= None, extractor=None, timeout= 600, use_sc= False):
         if procs==0:  procs= multiprocessing.cpu_count()
         self.procs= procs
         self.verbose= verbose
@@ -105,9 +98,10 @@ class WordBatch(object):
         self.timeout= timeout
 
         self.dictionary_freeze= False
-        self.dictionary= {u'':0}
+        self.dictionary= {}
         self.dft= Counter()
         self.raw_dft= Counter()
+        self.preserve_raw_dft= False
 
         self.normalize_text= normalize_text
         if spellcor_count==0:  spellcor_dist= 0
@@ -115,7 +109,8 @@ class WordBatch(object):
         self.spellcor_count= spellcor_count
         self.spellcor_dist= spellcor_dist
         self.stemmer= stemmer
-        self.raw_min_df= raw_min_df
+        if raw_min_df==-1:  self.raw_min_df= min_df
+        else:  self.raw_min_df= raw_min_df
         self.pos_tagger= pos_tagger
 
         self.doc_count= 0
@@ -123,10 +118,14 @@ class WordBatch(object):
         self.min_df= min_df
         self.max_df= max_df
 
-        if extractor!=None:
-            if type(extractor) != tuple and type(extractor) != list:   self.extractor= extractor(self, {})
-            else:  self.extractor= extractor[0](self, extractor[1])
+        self.set_extractor(extractor)
         self.use_sc= use_sc
+
+    def set_extractor(self, extractor=None):
+        if extractor != None:
+            if type(extractor) != tuple and type(extractor) != list:  self.extractor = extractor(self, {})
+            else:  self.extractor = extractor[0](self, extractor[1])
+        else: self.extractor = None
 
     def update_dictionary(self, texts, dft, dictionary, min_df):
         dfts2= self.parallelize_batches(self.procs, batch_get_dfs, texts, [])
@@ -141,24 +140,22 @@ class WordBatch(object):
                 if word in dictionary:  continue
                 if type(self.min_df)==type(1):
                     if df<self.min_df:  continue
-                else:
-                    if float(df)/self.doc_count < self.min_df:  continue
+                elif float(df)/self.doc_count < self.min_df:  continue
                 if type(self.max_df)==type(1):
                     if df > self.max_df:  continue
-                else:
-                    if float(df)/self.doc_count > self.max_df:  continue
-                dictionary[word] = len(dictionary)
-                if self.verbose>1: print "Add word to dictionary:", word, dft[word], dictionary[word]
+                elif float(df)/self.doc_count > self.max_df:  continue
+                dictionary[word] = len(dictionary)+1
+                if self.verbose>2: print "Add word to dictionary:", word, dft[word], dictionary[word]
 
         if min_df>0:
-            if self.verbose>2: print "Document Frequency Table size:", len(dft)
+            if self.verbose>1: print "Document Frequency Table size:", len(dft)
             if type(min_df) == type(1):
                 for word in list(dft.keys()):
                     if dft[word]<min_df:  dft.pop(word)
             else:
                 for word in list(dft.keys()):
                     if float(dft[word])/self.doc_count < min_df:  dft.pop(word)
-            if self.verbose > 2: print "Document Frequency Table pruned size:", len(dft)
+            if self.verbose > 1: print "Document Frequency Table pruned size:", len(dft)
 
     def normalize_texts(self, texts):
         texts2= self.parallelize_batches(self.procs, batch_normalize_texts, texts, [self.normalize_text])
@@ -168,22 +165,22 @@ class WordBatch(object):
     def normalize_wordforms(self, texts):
         if self.verbose > 0:  print "Make word normalization dictionary"
         if self.spellcor_dist>0:
-            raw_dft2 = Counter(
-                dict((word, self.raw_dft[word]) for word in self.raw_dft if self.raw_dft[word] > self.spellcor_count))
-            spell_index= {}
+            raw_dft2= {word:self.raw_dft[word]
+                                for word in self.raw_dft if self.raw_dft[word] > self.spellcor_count}
+            spell_index= defaultdict(list)
             for word in raw_dft2:
-                if len(word)>15: continue
+                if len(word)>15:  continue
                 for word2 in get_deletions(word, self.spellcor_dist):
-                    if word2 not in spell_index:  spell_index[word2]= [word]
-                    else:  spell_index[word2].append(word)
+                    spell_index[word2].append(word)
         if self.stemmer!=None:
             if self.spellcor_count>0:
-                corrs= dict((word, self.stemmer.stem(correct_spelling(
-                      word, raw_dft2, spell_index, self.spellcor_count, self.spellcor_dist))) for word in self.raw_dft)
-            else: corrs= dict((word, self.stemmer.stem(word)) for word in self.raw_dft)
+                corrs= {word:self.stemmer.stem(correct_spelling(
+                      word, raw_dft2, spell_index, self.spellcor_count, self.spellcor_dist)) for word in self.raw_dft}
+            else: corrs= {word:self.stemmer.stem(word) for word in self.raw_dft}
         else:
-            corrs = dict((word, correct_spelling(
-                word, raw_dft2, spell_index, self.spellcor_count, self.spellcor_dist)) for word in self.raw_dft)
+            corrs = {word:correct_spelling(
+                word, raw_dft2, spell_index, self.spellcor_count, self.spellcor_dist) for word in self.raw_dft}
+        corrs= {key:value for key, value in corrs.iteritems() if key!=value}
         if self.verbose > 0:  print "Make word normalizations"
         texts= self.parallelize_batches(self.procs, batch_correct_spellings, texts, [corrs, self.pos_tagger])
         if self.use_sc== False:  return [item for sublist in texts for item in sublist]
@@ -197,7 +194,10 @@ class WordBatch(object):
             self.update_dictionary(texts, self.raw_dft, None, self.raw_min_df)
             if self.verbose > 0:  print "Normalize wordforms"
             texts= self.normalize_wordforms(texts)
+            if self.preserve_raw_dft==False:  self.raw_dft= Counter()
         if not(self.dictionary_freeze):  self.update_dictionary(texts, self.dft, self.dictionary, self.min_df)
+        if self.verbose> 2: print "len(self.raw_dft):", len(self.raw_dft), "len(self.dft):", len(self.dft)
+        #print "gc.collect():", gc.collect()
         return texts
 
     def fit_transform(self, texts, labels=None, cache_features= None):
@@ -208,10 +208,11 @@ class WordBatch(object):
     def transform(self, texts, labels= None, extractor= None, cache_features= None):
         if self.use_sc==True:  cache_features= None  #No feature caching with Spark
         if extractor== None:  extractor= self.extractor
+        if cache_features != None and os.path.exists(cache_features):  return extractor.load_features(cache_features)
         texts= self.fit(texts)
-        if extractor!= None:  features= extractor.transform(texts)
-        if cache_features!=None: extractor.save_features(cache_features + ".lz4", features)
-        return features
+        if extractor!= None:  texts= extractor.transform(texts)
+        if cache_features!=None: extractor.save_features(cache_features, texts)
+        return texts
 
     def lists2rddbatches(self, lists, sc, minibatch_size=0):
         if minibatch_size==0:  minibatch_size= self.minibatch_size

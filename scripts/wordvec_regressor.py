@@ -9,7 +9,7 @@ from wordbatch.models import FTRL
 from wordbatch.extractors import WordVec, Hstack
 import threading
 
-non_alphanums = re.compile(u'[\W]')
+non_alphanums = re.compile(u'[\W+]')
 nums_re= re.compile("\W*[0-9]+\W*")
 trash_re= [re.compile("<[^>]*>"), re.compile("[^a-z0-9' -]+"), re.compile(" [.0-9'-]+ "), re.compile("[-']{2,}"),
            re.compile(" '"),re.compile("  +")]
@@ -17,7 +17,7 @@ trash_re= [re.compile("<[^>]*>"), re.compile("[^a-z0-9' -]+"), re.compile(" [.0-
 def normalize_text(text):
     text= text.lower()
     text= nums_re.sub(" NUM ", text)
-    text= " ".join([word for word in non_alphanums.sub(" ",text).split() if len(word)>1])
+    text= " ".join([word for word in non_alphanums.sub(" ",text).strip().split() if len(word)>1])
     return text
 
 class WordvecRegressor(object):

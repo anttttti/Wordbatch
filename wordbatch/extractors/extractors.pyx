@@ -97,7 +97,7 @@ class WordBag:
         cdef int fc_hash_polys_window= self.hash_polys_window, fc_hash_polys_mindf= self.hash_polys_mindf
         cdef float fc_hash_polys_maxdf= self.hash_polys_maxdf, fc_hash_polys_weight= self.hash_polys_weight
 
-        text= text.split()
+        text= text.split(" ")
         cdef TextRow textrow= TextRow()
         for x from 0 <= x < len(text):
             word= text[x]
@@ -194,7 +194,6 @@ class WordHash:
         if self.wb.use_sc==True:  return results
         return ssp.vstack(results)
 
-
 class WordSeq:
     def __init__(self, wb, fea_cfg):
         self.wb= wb
@@ -202,20 +201,22 @@ class WordSeq:
         fea_cfg.setdefault("seq_padstart", True)
         fea_cfg.setdefault("seq_truncstart", True)
         fea_cfg.setdefault("remove_oovs", False)
+        fea_cfg.setdefault("pad_id", 0)
+        fea_cfg.setdefault("oov_id", wb.n_words+1)
         for key, value in fea_cfg.items():  setattr(self, key, value)
 
     def transform_single(self, text):
         wb= self.wb
         dictionary= wb.dictionary
-        if self.remove_oovs:  wordseq= [dictionary.get(word, 0) for word in text.split() if word in dictionary]
-        else:  wordseq= [dictionary.get(word, wb.n_words - 1) for word in text.split()]
+        if self.remove_oovs:  wordseq= [dictionary[word] for word in text.split(" ") if word in dictionary]
+        else:  wordseq= [dictionary.get(word, self.oov_id) for word in text.split(" ")]
         if self.seq_maxlen != None:
             if len(wordseq) > self.seq_maxlen:
                 if self.seq_truncstart:  wordseq= wordseq[-self.seq_maxlen:]
                 else:  wordseq= wordseq[:self.seq_maxlen]
             else:
-                if self.seq_padstart== True:  wordseq= [0] * (self.seq_maxlen - len(wordseq)) + wordseq
-                else:  wordseq+= [0] * (wb.seq_maxlen - len(wordseq))
+                if self.seq_padstart== True:  wordseq= [self.pad_id] * (self.seq_maxlen - len(wordseq)) + wordseq
+                else:  wordseq+= [self.pad_id] * (wb.seq_maxlen - len(wordseq))
         return wordseq
 
     def batch_transform(self, texts):  return [self.transform_single(text) for text in texts]
@@ -225,6 +226,20 @@ class WordSeq:
         results = self.wb.parallelize_batches(int(self.wb.procs / 2), batch_transform, texts, [self])
         if self.wb.use_sc == True:  return results
         return [item for sublist in results for item in sublist]
+
+    def save_features(self, file, features):
+        save_to_lz4(file, features, dtype=int)
+        i= 0
+        indices= []
+        for x in features:
+            i+= len(x)
+            indices.append(i)
+        save_to_lz4(file + ".i", indices, dtype=int)
+
+    def load_features(self, file):
+        words= load_from_lz4(file, int).tolist()
+        indices= [0]+load_from_lz4(file + ".i", int).tolist()
+        return [words[indices[i]:indices[i+1]] for i in range(len(indices)-1)]
 
 class WordVec:
     def __init__(self, wb, fea_cfg):
@@ -249,7 +264,7 @@ class WordVec:
         return w2v
 
     def transform_single(self, text):
-        text= text.split()
+        text= text.split(" ")
         if len(text)==0:  return np.zeros(self.w2v_dim)
         w2v= self.w2v
         vecs= []
