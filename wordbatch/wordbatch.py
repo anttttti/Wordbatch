@@ -90,7 +90,8 @@ def default_normalize_text(text):
 class WordBatch(object):
     def __init__(self, normalize_text= default_normalize_text, spellcor_count=0, spellcor_dist= 2, n_words= 10000000,
                  min_df= 0, max_df= 1.0, raw_min_df= -1, procs= 0, verbose= 1, minibatch_size= 20000,
-                 stemmer= None, pos_tagger= None, extractor=None, timeout= 600, use_sc= False):
+                 stemmer= None, pos_tagger= None, extractor=None, timeout= 600, use_sc= False,
+                 method= "multiprocessing"):
         if procs==0:  procs= multiprocessing.cpu_count()
         self.procs= procs
         self.verbose= verbose
@@ -120,6 +121,7 @@ class WordBatch(object):
 
         self.set_extractor(extractor)
         self.use_sc= use_sc
+        self.method= method
 
     def set_extractor(self, extractor=None):
         if extractor != None:
@@ -237,7 +239,9 @@ class WordBatch(object):
         labels= [item for sublist in labels for item in sublist]
         return texts, labels
 
-    def parallelize_batches(self, procs, task, data, args, method="multiprocessing", timeout=-1, rdd_col= 1):
+    def parallelize_batches(self, procs, task, data, args, method=None, timeout=-1, rdd_col= 1):
+        if method == None: method= self.method
+        if method == "None": return [task([data]+ args)]
         if self.use_sc==True:
             if self.verbose>1: print task, method
             def apply_func(batch):  return batch[:rdd_col]+[task([batch[rdd_col]]+args)]+batch[rdd_col+1:]
