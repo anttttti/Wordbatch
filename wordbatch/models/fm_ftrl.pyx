@@ -23,7 +23,7 @@ cdef double predict_single(int* inds, double* vals, int lenn,
 						   double* w_fm, double* z_fm, double* n_fm, double weight_fm,
 						   unsigned int D_fm, bint bias_term, int threads) nogil:
 	cdef unsigned int i, ii, k
-	cdef double sign, zi, v, d, wi, wi2, e= 0.0, e2= 0.0
+	cdef double sign, zi, d, wi, wi2, e= 0.0, e2= 0.0
 
 	if bias_term:
 		wi= w[0]= -z[0] / ((beta+sqrt(n[0])) * ialpha)
@@ -32,11 +32,10 @@ cdef double predict_single(int* inds, double* vals, int lenn,
 	for ii in prange(lenn, nogil=True, num_threads= threads):
 		i= inds[ii]
 		zi= z[i]
-		v= vals[ii]
 		sign= -1.0 if zi < 0 else 1.0
 		if sign * zi  > L1:
 			w[ii+1]= wi= (sign * L1 - zi) / (sqrt(n[i]) * ialpha + baL2)
-			e+= wi * v
+			e+= wi * vals[ii]
 		else:  w[ii+1] = 0.0
 
 	wi2= 0.0
@@ -179,7 +178,7 @@ cdef class FM_FTRL:
 											   D_fm, bias_term, threads), self.inv_link)
 		return p
 
-	def fit(self, X, y, seed= None, float alpha_fm= -1, int threads= 0, int verbose= 1):
+	def fit(self, X, y, seed= None, float alpha_fm= -1, int threads= 0, int verbose=0):
 		if alpha_fm!=-1:  self.alpha_fm= alpha_fm
 		if threads == 0:  threads= self.threads
 		if type(X) != ssp.csr.csr_matrix:  X = ssp.csr_matrix(X, dtype=np.float64)
@@ -193,13 +192,11 @@ cdef class FM_FTRL:
 					np.ndarray[int, ndim=1, mode='c'] X_indptr,
 					np.ndarray[double, ndim=1, mode='c'] y, int threads, int verbose):
 		cdef double ialpha= 1.0/self.alpha, L1= self.L1, beta= self.beta, baL2= beta * ialpha + self.L2, \
-					alpha_fm= self.alpha_fm, weight_fm= self.weight_fm, L2_fm= self.L2_fm
+					alpha_fm= self.alpha_fm, weight_fm= self.weight_fm, L2_fm= self.L2_fm, e, e_total= 0, zfmi
 		cdef double *ys= <double*> y.data
 		cdef double *w= &self.w[0], *z= &self.z[0], *n= &self.n[0], *n_fm= &self.n_fm[0], \
 				    *z_fm= &self.z_fm[0], *w_fm= &self.w_fm[0]
-		cdef double e, e_total= 0, zfmi
-		cdef unsigned int D_fm= self.D_fm, i
-		cdef int lenn, ptr, row_count= X_indptr.shape[0]-1, row
+		cdef unsigned int D_fm= self.D_fm, i, lenn, ptr, row_count= X_indptr.shape[0]-1, row
 		cdef bint bias_term= self.bias_term
 		cdef int* inds, indptr
 		cdef double* vals
@@ -214,9 +211,8 @@ cdef class FM_FTRL:
 											L1, baL2, ialpha, beta, w, z, n,
 											w_fm, z_fm, n_fm, weight_fm,
 											D_fm, bias_term, threads), self.inv_link) -ys[row]
-				update_single(inds, vals, lenn,
-							  e, ialpha, w, z, n, alpha_fm, L2_fm, w_fm, z_fm, n_fm, D_fm, bias_term,
-							  threads)
+				update_single(inds, vals, lenn, e, ialpha, w, z, n, alpha_fm, L2_fm, w_fm, z_fm, n_fm, D_fm,
+							  bias_term, threads)
 				e_total+= abs(e)
 		if verbose>0:  print "Total e:", e_total
 

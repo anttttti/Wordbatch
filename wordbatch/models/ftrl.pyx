@@ -104,13 +104,12 @@ cdef class FTRL:
 	def predict_f(self, np.ndarray[double, ndim=1, mode='c'] X_data,
 					np.ndarray[int, ndim=1, mode='c'] X_indices,
 					np.ndarray[int, ndim=1, mode='c'] X_indptr, int threads):
-		cdef double ialpha= 1.0/self.alpha, L1= self.L1, beta= self.beta
+		cdef double ialpha= 1.0/self.alpha, L1= self.L1, beta= self.beta, baL2= beta * ialpha + self.L2
 		p= np.zeros(X_indptr.shape[0]-1, dtype= np.float64)
 		cdef double[:] w= self.w, z= self.z, n= self.n
 		cdef double[:] pp= p
 		cdef int lenn, row_count= X_indptr.shape[0]-1, row, ptr
 		cdef bint bias_term= self.bias_term
-		cdef double baL2= beta * ialpha + self.L2
 		for row in range(row_count):
 			ptr= X_indptr[row]
 			lenn= X_indptr[row + 1] - ptr
@@ -120,7 +119,7 @@ cdef class FTRL:
 											   bias_term, threads), self.inv_link)
 		return p
 
-	def fit(self, X, y, int threads= 0):
+	def fit(self, X, y, int threads= 0, int verbose=0):
 		if threads == 0:  threads= self.threads
 		if type(X) != ssp.csr.csr_matrix:  X = ssp.csr_matrix(X, dtype=np.float64)
 		if type(y) != np.array:  y = np.array(y, dtype=np.float64)
@@ -130,24 +129,24 @@ cdef class FTRL:
 
 	def fit_f(self, np.ndarray[double, ndim=1, mode='c'] X_data,
 					np.ndarray[int, ndim=1, mode='c'] X_indices,
-					np.ndarray[int, ndim=1, mode='c'] X_indptr, y, int threads):
-		cdef double ialpha= 1.0/self.alpha, L1= self.L1, beta= self.beta
+					np.ndarray[int, ndim=1, mode='c'] X_indptr, y, int threads, int verbose):
+		cdef double ialpha= 1.0/self.alpha, L1= self.L1, beta= self.beta, baL2= beta * ialpha + self.L2, e, e_total= 0
 		cdef double[:] w= self.w, z= self.z, n= self.n, ys= y
-		cdef int lenn, ptr, row_count= X_indptr.shape[0]-1, row
+		cdef unsigned int lenn, ptr, row_count= X_indptr.shape[0]-1, row
 		cdef bint bias_term= self.bias_term
 		cdef int* inds, indptr
 		cdef double* vals
-		cdef double baL2= beta * ialpha + self.L2
 		for iters in range(self.iters):
 			for row in range(row_count):
 				ptr= X_indptr[row]
 				lenn= X_indptr[row+1]-ptr
 				inds= <int*> X_indices.data+ptr
 				vals= <double*> X_data.data+ptr
-				update_single(inds, vals, lenn,
-							  inv_link_f(predict_single(inds, vals, lenn, L1, baL2, ialpha, beta, w, z, n, bias_term,
-														threads),
-										 self.inv_link)-ys[row], ialpha, w, z, n, bias_term, threads)
+				e= inv_link_f(predict_single(inds, vals, lenn, L1, baL2, ialpha, beta, w, z, n, bias_term,
+														threads), self.inv_link)-ys[row]
+				update_single(inds, vals, lenn, e, ialpha, w, z, n, bias_term, threads)
+				e_total += abs(e)
+		if verbose > 0:  print "Total e:", e_total
 
 	def pickle_model(self, filename):
 		with gzip.open(filename, 'wb') as model_file:

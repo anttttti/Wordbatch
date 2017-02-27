@@ -1,26 +1,16 @@
 #!python
 #cython: boundscheck=False, infer_types=True, wraparound=False
-import os
-import multiprocessing
 import copy_reg
 import types
-from sklearn.utils.murmurhash import murmurhash3_32
+#from sklearn.utils.murmurhash import murmurhash3_32
 from sklearn.feature_extraction.text import HashingVectorizer
-from contextlib import closing
-from collections import Counter
-import operator
 #from nltk.metrics import edit_distance
-import Levenshtein #python-Levenshtein
 import scipy.sparse as ssp
 import scipy as sp
 import numpy as np
 import gzip
 import lz4framed
 import array
-import sys
-import random
-import time
-import re
 
 from cpython cimport array
 cimport cython

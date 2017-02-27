@@ -35,12 +35,20 @@ setup(
                             ["wordbatch/extractors/extractors.pyx", "wordbatch/extractors/MurmurHash3.cpp"],
                             libraries= [],
                             include_dirs=[numpy.get_include(), '.'],
-                            extra_compile_args = ["-O3", "-ffast-math"]),
+                            extra_compile_args = ["-O3", "-ffast-math"],
+                            extra_link_args=['-fopenmp']),
                   Extension("wordbatch.models.ftrl",
                             ["wordbatch/models/ftrl.pyx"],
                             libraries= [],
                             include_dirs=[numpy.get_include(), '.'],
                             extra_compile_args = ["-O3", "-fopenmp", "-ffast-math"],
+                            extra_link_args=['-fopenmp']),
+                  Extension("wordbatch.models.fm_ftrl",
+                            ["wordbatch/models/fm_ftrl.pyx"],
+                            libraries= [],
+                            include_dirs=[numpy.get_include(), '.'],
+                            #extra_compile_args = ["-O3", "-fopenmp", "-march=native"],
+                            extra_compile_args = ["-O3", "-fopenmp"],
                             extra_link_args=['-fopenmp'])
         ]
 )
