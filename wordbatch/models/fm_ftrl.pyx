@@ -17,13 +17,15 @@ cdef double inv_link_f(double e, int inv_link):
 	if inv_link==1:  return 1.0 / (1.0 + exp(-fmax(fmin(e, 35.0), -35.0)))
 	return e
 
+cdef fabs(float x):  return x if x>0 else -x
+
 cdef double predict_single(int* inds, double* vals, int lenn,
 						   double L1, double baL2, double ialpha, double beta,
 						   double* w, double* z, double* n,
 						   double* w_fm, double* z_fm, double* n_fm, double weight_fm,
-						   unsigned int D_fm, bint bias_term, int threads) nogil:
+						   unsigned int D_fm, bint bias_term, int threads):
 	cdef unsigned int i, ii, k
-	cdef double sign, zi, d, wi, wi2, e= 0.0, e2= 0.0
+	cdef double sign, zi, d, wi, wi2, wfmk, e= 0.0, e2= 0.0
 
 	if bias_term:
 		wi= w[0]= -z[0] / ((beta+sqrt(n[0])) * ialpha)
@@ -40,12 +42,13 @@ cdef double predict_single(int* inds, double* vals, int lenn,
 
 	wi2= 0.0
 	for k in prange(D_fm, nogil=True, num_threads=threads):
-		w_fm[k]= 0.0
+		wfmk= 0.0
 		for ii in range(lenn):
 			d= z_fm[inds[ii] * D_fm + k] * vals[ii]
-			w_fm[k]+= d
-			wi2+= d ** 2
-		e2+= w_fm[k] ** 2
+			wfmk= wfmk+d
+			wi2+= d **2
+		e2+= wfmk **2
+		w_fm[k]= wfmk
 	e2= (e2- wi2)* 0.5 *weight_fm
 	return e+e2
 
@@ -113,7 +116,7 @@ cdef class FM_FTRL:
 				 unsigned int D=2**25,
 				 double alpha_fm=0.1,
 				 double L2_fm= 0.0,
-				 double init_fm= 0.001,
+				 double init_fm= 0.01,
 				 unsigned int D_fm=20,
 				 double weight_fm= 1.0,
 				 unsigned int iters=1,
@@ -145,7 +148,8 @@ cdef class FM_FTRL:
 		self.w_fm = np.zeros(self.D_fm, dtype=np.float64)
 		self.seed= seed
 		rand= np.random.RandomState(seed)
-		self.z_fm= rand.normal(0, init_fm, self.D*self.D_fm)
+		self.z_fm= (rand.rand(self.D*self.D_fm)-0.5)* init_fm
+
 		self.n_fm= np.zeros(self.D, dtype=np.float64)
 
 
@@ -193,15 +197,14 @@ cdef class FM_FTRL:
 					np.ndarray[double, ndim=1, mode='c'] y, int threads, int verbose):
 		cdef double ialpha= 1.0/self.alpha, L1= self.L1, beta= self.beta, baL2= beta * ialpha + self.L2, \
 					alpha_fm= self.alpha_fm, weight_fm= self.weight_fm, L2_fm= self.L2_fm, e, e_total= 0, zfmi
-		cdef double *ys= <double*> y.data
 		cdef double *w= &self.w[0], *z= &self.z[0], *n= &self.n[0], *n_fm= &self.n_fm[0], \
-				    *z_fm= &self.z_fm[0], *w_fm= &self.w_fm[0]
-		cdef unsigned int D_fm= self.D_fm, i, lenn, ptr, row_count= X_indptr.shape[0]-1, row
+				    *z_fm= &self.z_fm[0], *w_fm= &self.w_fm[0], *ys= <double*> y.data
+		cdef unsigned int D_fm= self.D_fm, i, lenn, ptr, row_count= X_indptr.shape[0]-1, row, inv_link= self.inv_link
 		cdef bint bias_term= self.bias_term
 		cdef int* inds, indptr
 		cdef double* vals
 
-		for iters in range(self.iters):
+		for iter in range(self.iters):
 			for row in range(row_count):
 				ptr= X_indptr[row]
 				lenn= X_indptr[row+1]-ptr
@@ -210,10 +213,10 @@ cdef class FM_FTRL:
 				e= inv_link_f(predict_single(inds, vals, lenn,
 											L1, baL2, ialpha, beta, w, z, n,
 											w_fm, z_fm, n_fm, weight_fm,
-											D_fm, bias_term, threads), self.inv_link) -ys[row]
+											D_fm, bias_term, threads), inv_link) -ys[row]
 				update_single(inds, vals, lenn, e, ialpha, w, z, n, alpha_fm, L2_fm, w_fm, z_fm, n_fm, D_fm,
 							  bias_term, threads)
-				e_total+= abs(e)
+				e_total+= fabs(e)
 		if verbose>0:  print "Total e:", e_total
 
 	def pickle_model(self, filename):

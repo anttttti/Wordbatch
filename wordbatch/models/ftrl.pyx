@@ -12,9 +12,11 @@ import multiprocessing
 
 np.import_array()
 
-cdef double inv_link_f(double e, int inv_link):
+cdef double inv_link_f(double e, int inv_link) nogil:
 	if inv_link==1:  return 1.0 / (1.0 + exp(-fmax(fmin(e, 35.0), -35.0)))
 	return e
+
+cdef fabs(float x):  return x if x>0 else -x
 
 cdef double predict_single(int* inds, double* vals, int lenn, double L1, double baL2, double ialpha, double beta,
 				double[:] w, double[:] z, double[:] n, bint bias_term, int threads) nogil:
@@ -40,18 +42,18 @@ cdef void update_single(int* inds, double* vals, int lenn, double e, double ialp
 	cdef int i, ii
 	cdef double g, g2, ni
 	if bias_term:
-		g2 = e * e
+		g2= e ** 2
 		ni= n[0]
-		z[0] += e - ((sqrt(ni + g2) - sqrt(ni)) * ialpha) * w[0]
-		n[0] += g2
+		z[0]+= e - ((sqrt(ni + g2) - sqrt(ni)) * ialpha) * w[0]
+		n[0]+= g2
 
 	for ii in prange(lenn, nogil=True, num_threads= threads):
 		i= inds[ii]
-		g = e * vals[ii]
-		g2 = g * g
+		g= e * vals[ii]
+		g2= g ** 2
 		ni= n[i]
-		z[i] += g - ((sqrt(ni + g2) - sqrt(ni)) * ialpha) * w[i]
-		n[i] += g2
+		z[i]+= g - ((sqrt(ni + g2) - sqrt(ni)) * ialpha) * w[i]
+		n[i]+= g2
 
 cdef class FTRL:
 	cdef double[:] w
@@ -125,27 +127,28 @@ cdef class FTRL:
 		if type(y) != np.array:  y = np.array(y, dtype=np.float64)
 		# self.fit_f(X, np.ascontiguousarray(X.data), np.ascontiguousarray(X.indices),
 		#           np.ascontiguousarray(X.indptr), y, threads)
-		self.fit_f(X.data, X.indices, X.indptr, y, threads)
+		self.fit_f(X.data, X.indices, X.indptr, y, threads, verbose)
 
 	def fit_f(self, np.ndarray[double, ndim=1, mode='c'] X_data,
 					np.ndarray[int, ndim=1, mode='c'] X_indices,
 					np.ndarray[int, ndim=1, mode='c'] X_indptr, y, int threads, int verbose):
 		cdef double ialpha= 1.0/self.alpha, L1= self.L1, beta= self.beta, baL2= beta * ialpha + self.L2, e, e_total= 0
 		cdef double[:] w= self.w, z= self.z, n= self.n, ys= y
-		cdef unsigned int lenn, ptr, row_count= X_indptr.shape[0]-1, row
+		cdef unsigned int lenn, ptr, row_count= X_indptr.shape[0]-1, row, inv_link= self.inv_link, j=0, jj
 		cdef bint bias_term= self.bias_term
 		cdef int* inds, indptr
 		cdef double* vals
-		for iters in range(self.iters):
+		for iter in range(self.iters):
 			for row in range(row_count):
 				ptr= X_indptr[row]
 				lenn= X_indptr[row+1]-ptr
 				inds= <int*> X_indices.data+ptr
 				vals= <double*> X_data.data+ptr
-				e= inv_link_f(predict_single(inds, vals, lenn, L1, baL2, ialpha, beta, w, z, n, bias_term,
-														threads), self.inv_link)-ys[row]
+				e= inv_link_f(
+				predict_single(inds, vals, lenn, L1, baL2, ialpha, beta, w, z, n, bias_term,
+														threads), inv_link)-ys[row]
 				update_single(inds, vals, lenn, e, ialpha, w, z, n, bias_term, threads)
-				e_total += abs(e)
+				e_total+= fabs(e)
 		if verbose > 0:  print "Total e:", e_total
 
 	def pickle_model(self, filename):
