@@ -47,8 +47,19 @@ setup(
                             ["wordbatch/models/fm_ftrl.pyx"],
                             libraries= [],
                             include_dirs=[numpy.get_include(), '.'],
-                            #extra_compile_args = ["-O3", "-fopenmp", "-march=native"],
-                            extra_compile_args = ["-O3", "-fopenmp"],
+                            extra_compile_args = ["-O3", "-fopenmp", "-ffast-math"],
+                            extra_link_args=['-fopenmp']),
+                  Extension("wordbatch.models.nn_relu_h1",
+                            ["wordbatch/models/nn_relu_h1.pyx"],
+                            libraries= [],
+                            include_dirs=[numpy.get_include(), '.'],
+                            extra_compile_args = ["-O3", "-fopenmp", "-ffast-math"],
+                            extra_link_args=['-fopenmp']),
+                  Extension("wordbatch.models.nn_relu_h2",
+                            ["wordbatch/models/nn_relu_h2.pyx"],
+                            libraries= [],
+                            include_dirs=[numpy.get_include(), '.'],
+                            extra_compile_args = ["-O3", "-fopenmp", "-ffast-math"],
                             extra_link_args=['-fopenmp'])
         ]
 )

@@ -7,7 +7,7 @@ from cpython cimport array
 import scipy.sparse as ssp
 cimport numpy as np
 from cython.parallel import prange
-from libc.math cimport exp, log, fmax, fmin, sqrt
+from libc.math cimport exp, log, fmax, fmin, sqrt, fabs
 import multiprocessing
 import random
 
@@ -16,8 +16,6 @@ np.import_array()
 cdef double inv_link_f(double e, int inv_link):
 	if inv_link==1:  return 1.0 / (1.0 + exp(-fmax(fmin(e, 35.0), -35.0)))
 	return e
-
-cdef fabs(float x):  return x if x>0 else -x
 
 cdef double predict_single(int* inds, double* vals, int lenn,
 						   double L1, double baL2, double ialpha, double beta,
@@ -104,6 +102,7 @@ cdef class FM_FTRL:
 	cdef double L2_fm
 	cdef double weight_fm
 	cdef double init_fm
+	cdef double e_noise
 	cdef int inv_link
 	cdef bint bias_term
 	cdef int seed
@@ -119,6 +118,7 @@ cdef class FM_FTRL:
 				 double init_fm= 0.01,
 				 unsigned int D_fm=20,
 				 double weight_fm= 1.0,
+			     double e_noise= 0.0001,
 				 unsigned int iters=1,
 				 inv_link= "sigmoid",
 				 bint bias_term=1,
@@ -134,6 +134,7 @@ cdef class FM_FTRL:
 		self.L2_fm= L2_fm
 		self.D_fm= D_fm
 		self.weight_fm= weight_fm
+		self.e_noise= e_noise
 		self.iters= iters
 		if threads==0:  threads= multiprocessing.cpu_count()-1
 		self.threads= threads
@@ -141,16 +142,16 @@ cdef class FM_FTRL:
 		if inv_link=="identity":  self.inv_link= 0
 		self.bias_term= bias_term
 
-		self.w= np.ones((self.D), dtype=np.float64)
-		self.z= np.zeros((self.D), dtype=np.float64)
-		self.n= np.zeros((self.D), dtype=np.float64)
+		self.w= np.ones((D), dtype=np.float64)
+		self.z= np.zeros((D), dtype=np.float64)
+		self.n= np.zeros((D), dtype=np.float64)
 
-		self.w_fm = np.zeros(self.D_fm, dtype=np.float64)
+		self.w_fm = np.zeros(D_fm, dtype=np.float64)
 		self.seed= seed
 		rand= np.random.RandomState(seed)
-		self.z_fm= (rand.rand(self.D*self.D_fm)-0.5)* init_fm
+		self.z_fm= (rand.rand(D*D_fm)-0.5)* init_fm
 
-		self.n_fm= np.zeros(self.D, dtype=np.float64)
+		self.n_fm= np.zeros(D, dtype=np.float64)
 
 
 	def predict(self, X, int threads= 0):
@@ -182,21 +183,20 @@ cdef class FM_FTRL:
 											   D_fm, bias_term, threads), self.inv_link)
 		return p
 
-	def fit(self, X, y, seed= None, float alpha_fm= -1, int threads= 0, int verbose=0):
+	def fit(self, X, y, float alpha_fm= -1, int threads= 0, seed= 0, int verbose=0):
 		if alpha_fm!=-1:  self.alpha_fm= alpha_fm
 		if threads == 0:  threads= self.threads
 		if type(X) != ssp.csr.csr_matrix:  X = ssp.csr_matrix(X, dtype=np.float64)
 		if type(y) != np.array:  y = np.array(y, dtype=np.float64)
-		# self.fit_f(X, np.ascontiguousarray(X.data), np.ascontiguousarray(X.indices),
-		#           np.ascontiguousarray(X.indptr), y, threads)
-		self.fit_f(X.data, X.indices, X.indptr, y, threads, verbose)
+		self.fit_f(X.data, X.indices, X.indptr, y, threads, seed, verbose)
 
 	def fit_f(self, np.ndarray[double, ndim=1, mode='c'] X_data,
 					np.ndarray[int, ndim=1, mode='c'] X_indices,
 					np.ndarray[int, ndim=1, mode='c'] X_indptr,
-					np.ndarray[double, ndim=1, mode='c'] y, int threads, int verbose):
+					np.ndarray[double, ndim=1, mode='c'] y, int threads, int seed, int verbose):
 		cdef double ialpha= 1.0/self.alpha, L1= self.L1, beta= self.beta, baL2= beta * ialpha + self.L2, \
-					alpha_fm= self.alpha_fm, weight_fm= self.weight_fm, L2_fm= self.L2_fm, e, e_total= 0, zfmi
+					alpha_fm= self.alpha_fm, weight_fm= self.weight_fm, L2_fm= self.L2_fm, e, e_total= 0, zfmi, \
+					e_noise= self.e_noise
 		cdef double *w= &self.w[0], *z= &self.z[0], *n= &self.n[0], *n_fm= &self.n_fm[0], \
 				    *z_fm= &self.z_fm[0], *w_fm= &self.w_fm[0], *ys= <double*> y.data
 		cdef unsigned int D_fm= self.D_fm, i, lenn, ptr, row_count= X_indptr.shape[0]-1, row, inv_link= self.inv_link
@@ -204,6 +204,7 @@ cdef class FM_FTRL:
 		cdef int* inds, indptr
 		cdef double* vals
 
+		rand= np.random.RandomState(seed)
 		for iter in range(self.iters):
 			for row in range(row_count):
 				ptr= X_indptr[row]
@@ -214,9 +215,10 @@ cdef class FM_FTRL:
 											L1, baL2, ialpha, beta, w, z, n,
 											w_fm, z_fm, n_fm, weight_fm,
 											D_fm, bias_term, threads), inv_link) -ys[row]
+				e_total+= fabs(e)
+				e += (rand.rand() - 0.5) * e_noise
 				update_single(inds, vals, lenn, e, ialpha, w, z, n, alpha_fm, L2_fm, w_fm, z_fm, n_fm, D_fm,
 							  bias_term, threads)
-				e_total+= fabs(e)
 		if verbose>0:  print "Total e:", e_total
 
 	def pickle_model(self, filename):

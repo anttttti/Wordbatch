@@ -7,7 +7,7 @@ from cpython cimport array
 import scipy.sparse as ssp
 cimport numpy as np
 from cython.parallel import prange
-from libc.math cimport exp, log, fmax, fmin, sqrt
+from libc.math cimport exp, log, fmax, fmin, sqrt, fabs
 import multiprocessing
 
 np.import_array()
@@ -15,8 +15,6 @@ np.import_array()
 cdef double inv_link_f(double e, int inv_link) nogil:
 	if inv_link==1:  return 1.0 / (1.0 + exp(-fmax(fmin(e, 35.0), -35.0)))
 	return e
-
-cdef fabs(float x):  return x if x>0 else -x
 
 cdef double predict_single(int* inds, double* vals, int lenn, double L1, double baL2, double ialpha, double beta,
 				double[:] w, double[:] z, double[:] n, bint bias_term, int threads) nogil:
@@ -92,9 +90,9 @@ cdef class FTRL:
 		if inv_link=="sigmoid":  self.inv_link= 1
 		if inv_link=="identity":  self.inv_link= 0
 		self.bias_term= bias_term
-		self.w= np.zeros((self.D,), dtype=np.float64)
-		self.z= np.zeros((self.D,), dtype=np.float64)
-		self.n= np.zeros((self.D,), dtype=np.float64)
+		self.w= np.zeros((D,), dtype=np.float64)
+		self.z= np.zeros((D,), dtype=np.float64)
+		self.n= np.zeros((D,), dtype=np.float64)
 
 	def predict(self, X, int threads= 0):
 		if threads==0:  threads= self.threads
