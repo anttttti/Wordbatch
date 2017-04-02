@@ -12,6 +12,7 @@ import scipy as sp
 import random
 import re
 import os
+import pandas as pd
 
 def _pickle_method(m):
    if m.im_self is None:  return getattr, (m.im_self.__class__, m.im_func.__name__)
@@ -129,8 +130,9 @@ class WordBatch(object):
             else:  self.extractor = extractor[0](self, extractor[1])
         else: self.extractor = None
 
-    def update_dictionary(self, texts, dft, dictionary, min_df):
-        dfts2= self.parallelize_batches(self.procs, batch_get_dfs, texts, [])
+    def update_dictionary(self, texts, dft, dictionary, min_df, input_split= False):
+        dfts2= self.parallelize_batches(self.procs, batch_get_dfs, texts, [], input_split= input_split,
+                                        merge_output=False)
         if self.use_sc==True:  dfts2= [batch[1] for batch in dfts2.collect()]
         if dictionary!=None:  self.doc_count+= sum([dft2.pop("###DOC_CNT###") for dft2 in dfts2])
         for dft2 in dfts2:  dft.update(dft2)
@@ -159,12 +161,13 @@ class WordBatch(object):
                     if float(dft[word])/self.doc_count < min_df:  dft.pop(word)
             if self.verbose > 1: print "Document Frequency Table pruned size:", len(dft)
 
-    def normalize_texts(self, texts):
-        texts2= self.parallelize_batches(self.procs, batch_normalize_texts, texts, [self.normalize_text])
-        if self.use_sc==False:  return [item for sublist in texts2 for item in sublist]
+    def normalize_texts(self, texts, input_split=False, merge_output=True):
+        texts2= self.parallelize_batches(self.procs, batch_normalize_texts, texts, [self.normalize_text],
+                                          input_split=input_split, merge_output=merge_output)
+        #if self.use_sc==False:  return [item for sublist in texts2 for item in sublist]
         return texts2
 
-    def normalize_wordforms(self, texts):
+    def normalize_wordforms(self, texts, input_split= False, merge_output= True):
         if self.verbose > 0:  print "Make word normalization dictionary"
         if self.spellcor_dist>0:
             raw_dft2= {word:self.raw_dft[word]
@@ -184,36 +187,41 @@ class WordBatch(object):
                 word, raw_dft2, spell_index, self.spellcor_count, self.spellcor_dist) for word in self.raw_dft}
         corrs= {key:value for key, value in corrs.iteritems() if key!=value}
         if self.verbose > 0:  print "Make word normalizations"
-        texts= self.parallelize_batches(self.procs, batch_correct_spellings, texts, [corrs, self.pos_tagger])
-        if self.use_sc== False:  return [item for sublist in texts for item in sublist]
-        return texts
+        return self.parallelize_batches(self.procs, batch_correct_spellings, texts, [corrs, self.pos_tagger],
+                                        input_split=input_split, merge_output=merge_output)
+        #if self.use_sc== False:  return [item for sublist in texts for item in sublist]
+        #return texts
 
-    def fit(self, texts):
+    def fit(self, texts, return_texts= False, input_split= False, merge_output= True):
         if self.verbose > 0:  print "Normalize text"
-        if self.normalize_text != None:  texts= self.normalize_texts(texts)
+        if self.normalize_text != None:  texts= self.normalize_texts(texts, input_split= input_split,
+                                                                     merge_output= False)
         if self.spellcor_count> 0 or self.stemmer!=None:
             if self.verbose > 0:  print "Update raw dfts"
-            self.update_dictionary(texts, self.raw_dft, None, self.raw_min_df)
+            self.update_dictionary(texts, self.raw_dft, None, self.raw_min_df, input_split= True)
             if self.verbose > 0:  print "Normalize wordforms"
-            texts= self.normalize_wordforms(texts)
+            texts= self.normalize_wordforms(texts, input_split= True, merge_output= False)
             if self.preserve_raw_dft==False:  self.raw_dft= Counter()
-        if not(self.dictionary_freeze):  self.update_dictionary(texts, self.dft, self.dictionary, self.min_df)
+        if not(self.dictionary_freeze):  self.update_dictionary(texts, self.dft, self.dictionary, self.min_df,
+                                                                input_split= True)
         if self.verbose> 2: print "len(self.raw_dft):", len(self.raw_dft), "len(self.dft):", len(self.dft)
-        #print "gc.collect():", gc.collect()
-        return texts
+        if return_texts:
+            if merge_output:  return self.merge_batches(texts)
+            else:  return texts
 
     def fit_transform(self, texts, labels=None, cache_features= None):
         return self.transform(texts, labels, cache_features)
 
     def partial_fit(self, texts, labels=None):  return self.fit(texts, labels)
 
-    def transform(self, texts, labels= None, extractor= None, cache_features= None):
+    def transform(self, texts, labels= None, extractor= None, cache_features= None, input_split= False):
         if self.use_sc==True:  cache_features= None  #No feature caching with Spark
         if extractor== None:  extractor= self.extractor
         if cache_features != None and os.path.exists(cache_features):  return extractor.load_features(cache_features)
-        texts= self.fit(texts)
-        if extractor!= None:  texts= extractor.transform(texts)
-        if cache_features!=None: extractor.save_features(cache_features, texts)
+        texts= self.fit(texts, return_texts=True, input_split=input_split, merge_output=False)
+        if extractor!= None:
+            texts= extractor.transform(texts, input_split= True, merge_output= True)
+            if cache_features!=None:  extractor.save_features(cache_features, texts)
         return texts
 
     def lists2rddbatches(self, lists, sc, minibatch_size=0):
@@ -234,62 +242,81 @@ class WordBatch(object):
         for batch in batches:
             texts.append(batch[1])
             labels.append(batch[2])
-        if isinstance(texts[0], ssp.csr_matrix):  texts= ssp.vstack(texts)
-        else:  texts= [item for sublist in texts for item in sublist]
-        labels= [item for sublist in labels for item in sublist]
+        texts= self.merge_batches(texts)
+        labels= self.merge_batches(labels)
         return texts, labels
 
-    def parallelize_batches(self, procs, task, data, args, method=None, timeout=-1, rdd_col= 1):
+    def split_batches(self, data):
+        start = 0; len_data = 0; minibatch_size = self.minibatch_size
+        data_split= []
+        data_type= type(data)
+        if data_type is list or data_type is tuple:  len_data= len(data)
+        else:
+            len_data= data.shape[0]
+            if minibatch_size> len_data: minibatch_size= len_data
+        while start < len_data:
+            if data_type== pd.DataFrame:
+                data_split.append([data.iloc[start:start + minibatch_size]])# + args)
+            else:
+                data_split.append([data[start:start + minibatch_size]])# + args)
+            start += minibatch_size
+        return data_split
+
+    def merge_batches(self, data):
+        if isinstance(data[0], ssp.csr_matrix):
+            return ssp.vstack(data)
+        return [item for sublist in data for item in sublist]
+
+    def parallelize_batches(self, procs, task, data, args, method=None, timeout=-1, rdd_col= 1, input_split=False,
+                            merge_output= True):
         if method == None: method= self.method
-        if method == "None": return [task([data]+ args)]
+        if self.verbose > 1: print task, method
         if self.use_sc==True:
-            if self.verbose>1: print task, method
             def apply_func(batch):  return batch[:rdd_col]+[task([batch[rdd_col]]+args)]+batch[rdd_col+1:]
             results= data.map(apply_func)
             return results
 
         if timeout==-1:  timeout= self.timeout
-        attempt= 0; start= 0; len_data= 0; minibatch_size= self.minibatch_size
-
-        paral_params= []
-        if type(data) is list or type(data) is tuple:  len_data= len(data)
+        attempt= 0
+        if not(input_split):
+            paral_params= [x+ args for x in self.split_batches(data)]
         else:
-            len_data= data.shape[0]
-            if minibatch_size> len_data: minibatch_size= len_data
-        while start < len_data:
-            paral_params.append([data[start:start + minibatch_size]] + args)
-            start += minibatch_size
-        while (attempt != -1):
-            try:
-                if method=="multiprocessing":
-                    with closing(multiprocessing.Pool(max(1, procs), maxtasksperchild=2)) as pool:
-                        results= pool.map_async(task, paral_params)
-                        if timeout==0:
-                            pool.close()
-                            pool.join()
-                            results= results.get()
-                        else:
-                            results.wait(timeout=timeout)
-                            if results.ready():  results= results.get()
-                            else:  raise ValueError('Parallelization timeout')
-                    return results
-                elif method=="threading":
-                    with closing(multiprocessing.dummy.Pool(max(1,procs))) as pool:
-                       results= pool.map(task, paral_params)
-                       pool.close()
-                       pool.join()
-                #elif method == "parallelpython":
-                #    job_server= pp.Server()
-                #    jobs= [job_server.submit(task, (x,), (), ()) for x in paral_params]
-                #    results= [x() for x in jobs]
-            except:
-                print "Parallelization fail. Method:", method, "Task:", task
-                attempt+= 1
-                if timeout!=0: timeout*= 2
-                if attempt>=5:  return None
-                print "Retrying, attempt:", attempt, "timeout limit:", timeout, "seconds"
-                continue
-            attempt= -1
+            paral_params=  [[x]+ args for x in data]
+        if method == "serial":
+            results = [task(minibatch) for minibatch in paral_params]
+        else:
+            while (attempt != -1):
+                try:
+                    if method=="multiprocessing":
+                        with closing(multiprocessing.Pool(max(1, procs), maxtasksperchild=2)) as pool:
+                            results= pool.map_async(task, paral_params)
+                            if timeout==0:
+                                pool.close()
+                                pool.join()
+                                results= results.get()
+                            else:
+                                results.wait(timeout=timeout)
+                                if results.ready():  results= results.get()
+                                else:  raise ValueError('Parallelization timeout')
+                        break
+                    elif method=="threading":
+                        with closing(multiprocessing.dummy.Pool(max(1,procs))) as pool:
+                           results= pool.map(task, paral_params)
+                           pool.close()
+                           pool.join()
+                    #elif method == "parallelpython":
+                    #    job_server= pp.Server()
+                    #    jobs= [job_server.submit(task, (x,), (), ()) for x in paral_params]
+                    #    results= [x() for x in jobs]
+                except:
+                    print "Parallelization fail. Method:", method, "Task:", task
+                    attempt+= 1
+                    if timeout!=0: timeout*= 2
+                    if attempt>=5:  return None
+                    print "Retrying, attempt:", attempt, "timeout limit:", timeout, "seconds"
+                    continue
+                attempt= -1
+        if merge_output:  return self.merge_batches(results)
         return results
 
     def shuffle_batch(self, texts, labels= None, seed= None):
@@ -301,16 +328,8 @@ class WordBatch(object):
         labels= [labels[x] for x in index_shuf]
         return texts, labels
 
-    #def batch_predict(self, args):
-    #    fnc= args[1]
-    #    return fnc(args[0])
-
-
     def predict_parallel(self, texts, clf):
-        #return sp.vstack(self.parallelize_batches(self.procs / 2, self.batch_apply_func, texts, [clf.predict]))[0]
-        results= self.parallelize_batches(self.procs / 2, batch_predict, texts, [clf])
-        if self.use_sc== True:  return results
-        return sp.vstack(results)[0]
+        return self.merge_batches(self.parallelize_batches(self.procs / 2, batch_predict, texts, [clf]))
 
     def __getstate__(self):
         return dict((k, v) for (k, v) in self.__dict__.iteritems())

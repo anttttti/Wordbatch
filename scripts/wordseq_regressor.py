@@ -97,7 +97,7 @@ class WordseqRegressor():
                     for review in line["Reviews"]:
                         rcount+= 1
                         if rcount % 100000 == 0:  print rcount
-                        #if rcount % 8 != 0: continue
+                        if rcount % 8 != 0: continue
                         if "Overall" not in review["Ratings"]: continue
                         texts.append(review["Content"])
                         labels.append((float(review["Ratings"]["Overall"]) - 3) *0.5)

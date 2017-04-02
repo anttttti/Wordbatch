@@ -154,11 +154,10 @@ class WordBag:
     def batch_transform(self, texts):
         return ssp.vstack([self.transform_single(text) for text in texts])
 
-    def transform(self, texts):
+    def transform(self, texts, input_split= False, merge_output= True):
         if self.wb.verbose > 0:  print "Extract wordbags"
-        results= self.wb.parallelize_batches(int(self.wb.procs / 2), batch_transform, texts, [self])
-        if self.wb.use_sc==True:  return results
-        return ssp.vstack(results)
+        return self.wb.parallelize_batches(int(self.wb.procs / 2), batch_transform, texts, [self],
+                                             input_split= input_split, merge_output= merge_output)
 
     def save_features(self, file, features):
         save_to_lz4(file, features.indptr, dtype=int)
@@ -178,11 +177,10 @@ class WordHash:
 
     def batch_transform(self, texts):  return self.hv.transform(texts)
 
-    def transform(self, texts):
+    def transform(self, texts, input_split= False, merge_output= True):
         if self.wb.verbose> 0:  print "Extract wordhashes"
-        results = self.wb.parallelize_batches(int(self.wb.procs / 2), batch_transform, texts, [self])
-        if self.wb.use_sc==True:  return results
-        return ssp.vstack(results)
+        return self.wb.parallelize_batches(int(self.wb.procs / 2), batch_transform, texts, [self],
+                                              input_split= input_split, merge_output= True)
 
 class WordSeq:
     def __init__(self, wb, fea_cfg):
@@ -211,11 +209,10 @@ class WordSeq:
 
     def batch_transform(self, texts):  return [self.transform_single(text) for text in texts]
 
-    def transform(self, texts):
+    def transform(self, texts, input_split= False, merge_output= True):
         if self.wb.verbose > 0:  print "Extract wordseqs"
-        results = self.wb.parallelize_batches(int(self.wb.procs / 2), batch_transform, texts, [self])
-        if self.wb.use_sc == True:  return results
-        return [item for sublist in results for item in sublist]
+        return self.wb.parallelize_batches(int(self.wb.procs / 2), batch_transform, texts, [self],
+                                           input_split=input_split, merge_output=merge_output)
 
     def save_features(self, file, features):
         save_to_lz4(file, features, dtype=int)
@@ -269,11 +266,10 @@ class WordVec:
 
     def batch_transform(self, texts):  return [self.transform_single(text) for text in texts]
 
-    def transform(self, texts):
+    def transform(self, texts, input_split= False, merge_output= True):
         if self.wb.verbose > 0:  print "Extract wordvecs"
-        results = self.wb.parallelize_batches(int(self.wb.procs / 2), batch_transform, texts, [self])
-        if self.wb.use_sc == True:  return results
-        return [item for sublist in results for item in sublist]
+        return self.wb.parallelize_batches(int(self.wb.procs / 2), batch_transform, texts, [self],
+                                           input_split=input_split, merge_output=merge_output)
 
 class Hstack:
     def __init__(self, wb, fea_cfg):
@@ -285,8 +281,7 @@ class Hstack:
 
     def batch_transform(self, texts):  return [self.transform_single(text) for text in texts]
 
-    def transform(self, texts):
+    def transform(self, texts, input_split= False, merge_output= True):
         if self.wb.verbose> 0:  print "Extract concatenated dense features"
-        results= self.wb.parallelize_batches(int(self.wb.procs / 2), batch_transform, texts, [self])
-        if self.wb.use_sc==True:  return results
-        return [item for sublist in results for item in sublist]
+        return self.wb.parallelize_batches(int(self.wb.procs / 2), batch_transform, texts, [self],
+                                           input_split=input_split, merge_output=merge_output)
