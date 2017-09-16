@@ -1,6 +1,9 @@
 #!python
 #cython: boundscheck=False, infer_types=True, wraparound=False
-import copy_reg
+from __future__ import with_statement
+from __future__ import division
+from __future__ import absolute_import
+from __future__ import print_function
 import types
 #from sklearn.utils.murmurhash import murmurhash3_32
 from sklearn.feature_extraction.text import HashingVectorizer
@@ -11,6 +14,11 @@ import numpy as np
 import gzip
 import lz4framed
 import array
+import sys
+if sys.version_info.major == 3:
+    import copyreg as copy_reg
+else:
+    import copy_reg
 
 from cpython cimport array
 cimport cython
@@ -23,14 +31,18 @@ np.import_array()
 cdef extern:
     void MurmurHash3_x86_32(void *key, int len, np.uint32_t seed, void *out)
 
-cpdef np.int32_t murmurhash3_bytes_s32(bytes key, unsigned int seed):
+cpdef np.int32_t murmurhash3_bytes_s32(bytes key, unsigned int seed= 0):
     cdef np.int32_t out
     MurmurHash3_x86_32(<char*> key, len(key), seed, &out)
     return out
 
 def _pickle_method(m):
-   if m.im_self is None:  return getattr, (m.im_self.__class__, m.im_func.__name__)
-   else:  return getattr, (m.im_self, m.im_func.__name__)
+    if sys.version_info.major == 3:
+        if m.im_self is None:  return getattr, (m.im_self.__class__, m.im_func.__name__)
+        else:  return getattr, (m.im_self, m.im_func.__name__)
+    else:
+        if m.__self__ is None:  return getattr, (m.__self__.__class__, m.__func__.__name__)
+        else:  return getattr, (m.__self__, m.__func__.__name__)
 copy_reg.pickle(types.MethodType, _pickle_method)
 
 def save_to_lz4(file, input, dtype, level= 0):
@@ -39,6 +51,17 @@ def save_to_lz4(file, input, dtype, level= 0):
 def load_from_lz4(file, dtype):
     with open(file, 'rb') as f:  input= np.fromstring(lz4framed.decompress(f.read()), dtype=dtype)
     return input
+
+def csr_to_lz4(file, features):
+    save_to_lz4(file, features.indptr, dtype=int)
+    save_to_lz4(file+".i", features.indices, dtype=int)
+    save_to_lz4(file+".d", features.data, dtype=np.float64)
+
+def lz4_to_csr(file):
+    indptr= load_from_lz4(file, int)
+    indices= load_from_lz4(file+".i", int)
+    data= load_from_lz4(file+".d", np.float64)
+    return ssp.csr_matrix((data, indices, indptr))
 
 def batch_transform(args):
     return args[1].batch_transform(args[0])
@@ -64,17 +87,20 @@ class WordBag:
         fea_cfg.setdefault("tf", 'log')
         fea_cfg.setdefault("idf", 0.0)
         fea_cfg.setdefault("hash_ngrams", 0)
-        fea_cfg.setdefault("hash_ngrams_weights", [-1.0, -1.0])
+        fea_cfg.setdefault("hash_ngrams_weights", None)
         fea_cfg.setdefault("hash_size", 10000000)
         fea_cfg.setdefault("hash_polys_window", 0)
         fea_cfg.setdefault("hash_polys_mindf", 5)
         fea_cfg.setdefault("hash_polys_maxdf", 0.5)
         fea_cfg.setdefault("hash_polys_weight", 0.1)
+        fea_cfg.setdefault("seed", 0)
         for key, value in fea_cfg.items():  setattr(self, key, value)
+        if self.hash_ngrams_weights==None: self.hash_ngrams_weights= [1.0 for x in range(self.hash_ngrams)]
 
     def transform_single(self, text):
         wb= self.wb
-        cdef int fc_hash_ngrams= self.hash_ngrams, word_id, df= 1, df2, hashed, doc_count= wb.doc_count, use_idf= 0
+        cdef int fc_hash_ngrams= self.hash_ngrams, word_id, df= 1, df2, hashed, doc_count= wb.doc_count, \
+                                    use_idf= 0, seed= self.seed
         cdef float idf_lift= 0.0, idf= 1.0, weight, norm= 1.0, norm_idf= 1.0
         if self.idf!= None:
             use_idf= True
@@ -103,7 +129,7 @@ class WordBag:
                textrow.append(word_id, 1, idf)
 
             for y from 0 <= y < min(fc_hash_ngrams, x+1):
-                hashed= murmurhash3_bytes_s32((" ".join(text[x-y:x+1])).encode("utf-8"), 0)
+                hashed= murmurhash3_bytes_s32((" ".join(text[x-y:x+1])).encode("utf-8"), seed)
                 weight= fc_hash_ngrams_weights[y]
                 if weight < 0: weight*= -idf
                 textrow.append(abs(hashed) % fc_hash_size, (hashed >= 0) * 2 - 1, weight)
@@ -117,8 +143,8 @@ class WordBag:
                     if doc_count!=0:
                         df2= wb.dft[word2]
                         if df2< fc_hash_polys_mindf or float(df2)/wb.doc_count> fc_hash_polys_maxdf:  continue
-                    hashed= murmurhash3_bytes_s32((word+"#"+word2).encode("utf-8"),0) if word<word2 \
-                        else murmurhash3_bytes_s32((word2+"#"+word).encode("utf-8"), 0)
+                    hashed= murmurhash3_bytes_s32((word+"#"+word2).encode("utf-8"), seed) if word<word2 \
+                        else murmurhash3_bytes_s32((word2+"#"+word).encode("utf-8"), seed)
                     weight= fc_hash_polys_weight
                     #if weight<0.0: weight= np.abs(weight) * 1.0/np.log(1+y)
                     if weight < 0.0: weight= np.abs(weight) * 1.0 / log(1 + y)
@@ -155,20 +181,15 @@ class WordBag:
         return ssp.vstack([self.transform_single(text) for text in texts])
 
     def transform(self, texts, input_split= False, merge_output= True):
-        if self.wb.verbose > 0:  print "Extract wordbags"
+        if self.wb.verbose > 0:  print("Extract wordbags")
         return self.wb.parallelize_batches(int(self.wb.procs / 2), batch_transform, texts, [self],
                                              input_split= input_split, merge_output= merge_output)
 
     def save_features(self, file, features):
-        save_to_lz4(file, features.indptr, dtype=int)
-        save_to_lz4(file+".i", features.indices, dtype=int)
-        save_to_lz4(file+".d", features.data, dtype=np.float64)
+        csr_to_lz4(file, features)
 
     def load_features(self, file):
-        indptr= load_from_lz4(file, int)
-        indices= load_from_lz4(file+".i", int)
-        data= load_from_lz4(file+".d", np.float64)
-        return ssp.csr_matrix((data, indices, indptr))
+        return lz4_to_csr(file)
 
 class WordHash:
     def __init__(self, wb, fea_cfg):
@@ -178,9 +199,15 @@ class WordHash:
     def batch_transform(self, texts):  return self.hv.transform(texts)
 
     def transform(self, texts, input_split= False, merge_output= True):
-        if self.wb.verbose> 0:  print "Extract wordhashes"
+        if self.wb.verbose> 0:  print("Extract wordhashes")
         return self.wb.parallelize_batches(int(self.wb.procs / 2), batch_transform, texts, [self],
                                               input_split= input_split, merge_output= True)
+
+    def save_features(self, file, features):
+        csr_to_lz4(file, features)
+
+    def load_features(self, file):
+        return lz4_to_csr(file)
 
 class WordSeq:
     def __init__(self, wb, fea_cfg):
@@ -210,7 +237,7 @@ class WordSeq:
     def batch_transform(self, texts):  return [self.transform_single(text) for text in texts]
 
     def transform(self, texts, input_split= False, merge_output= True):
-        if self.wb.verbose > 0:  print "Extract wordseqs"
+        if self.wb.verbose > 0:  print("Extract wordseqs")
         return self.wb.parallelize_batches(int(self.wb.procs / 2), batch_transform, texts, [self],
                                            input_split=input_split, merge_output=merge_output)
 
@@ -231,23 +258,45 @@ class WordSeq:
 class WordVec:
     def __init__(self, wb, fea_cfg):
         self.wb= wb
-        if "w2v" not in fea_cfg: fea_cfg["w2v"]= self.load_w2v(fea_cfg["wordvec_file"], fea_cfg["normalize_text"])
-        fea_cfg.setdefault("w2v_dim", len(fea_cfg["w2v"].values()[0]))
+        fea_cfg.setdefault("normalize_text", None)
+        fea_cfg.setdefault("stemmer", None)
+        fea_cfg.setdefault("merge_dict", True)
+        fea_cfg.setdefault("normalize_dict", False)
+        fea_cfg.setdefault("verbose", 0)
         fea_cfg.setdefault("merge_vectors", "mean")
+        fea_cfg.setdefault("normalize_merged", "L2")
         for key, value in fea_cfg.items():  setattr(self, key, value)
+        self.w2v= self.load_w2v(fea_cfg["wordvec_file"])
+        self.w2v_dim= len(list(self.w2v.values())[0])
 
-    def load_w2v(self, w2v_file, normalize_text=None, stemmer=None):
+    def load_w2v(self, w2v_file):
         w2v= {}
-        if w2v_file.endswith(".gz"):  opn= gzip.open
-        else:  opn= open
+        from collections import Counter
+        w2v_counts= Counter()
+        opn= gzip.open if w2v_file.endswith(".gz") else open
         for line in opn(w2v_file):
             line= line.decode("ISO-8859-1").strip().split(" ", 1)
             vec= np.array([np.float64(x) for x in line[1].split(" ")])
             if len(vec)<2: continue
             word= line[0]
-            if normalize_text!=None:  word= normalize_text(word)
-            if stemmer!=None: word= stemmer.stem(word)
-            w2v[word]= vec
+            if self.normalize_text!=None:  word= self.normalize_text(word)
+            if self.stemmer!=None:  word= self.stemmer.stem(word)
+            if not(self.merge_dict):  w2v[word]= vec
+            else:
+                w2v_counts[word] += 1
+                if word in w2v:
+                    w2v[word]+= (vec - w2v[word]) / w2v_counts[word]
+                    if self.verbose>0:
+                        print("Merged entry:", word, w2v_counts[word])
+                else:  w2v[word]= vec
+        if self.normalize_dict!=False:
+            for word in w2v:
+                if self.normalize_dict=="L1":
+                    norm= sum(np.abs(w2v[word]))
+                else:
+                    norm = np.sqrt(sum(w2v[word] **2))
+                if norm!=0:
+                    w2v[word]/= norm
         return w2v
 
     def transform_single(self, text):
@@ -258,23 +307,31 @@ class WordVec:
         for word in text:
             if word in w2v:  vecs.append(w2v[word])
             else:  vecs.append(np.zeros(self.w2v_dim))
-        if self.merge_vectors=="mean":
-            mean_vec= np.zeros(self.w2v_dim)
-            for vec in vecs:  mean_vec+= vec/ len(vecs)
-            return mean_vec
+        if self.merge_vectors!=None:
+            if self.merge_vectors=="mean":
+                vec= np.mean(vecs, axis=0)
+            if self.normalize_merged!=None:
+                if self.normalize_merged == "L1":
+                    norm = sum(np.abs(vec))
+                else:
+                    norm = np.sqrt(sum(vec ** 2))
+                if norm != 0:
+                    vec /= norm
+            return vec
         return vecs
 
     def batch_transform(self, texts):  return [self.transform_single(text) for text in texts]
 
     def transform(self, texts, input_split= False, merge_output= True):
-        if self.wb.verbose > 0:  print "Extract wordvecs"
+        if self.wb.verbose > 0:  print("Extract wordvecs")
         return self.wb.parallelize_batches(int(self.wb.procs / 2), batch_transform, texts, [self],
                                            input_split=input_split, merge_output=merge_output)
 
 class Hstack:
     def __init__(self, wb, fea_cfg):
         self.wb= wb
-        self.extractors= [x[0](wb, x[1]) for x in fea_cfg]
+        t= [x[0](wb, x[1]) for x in fea_cfg]
+        self.extractors= list(t)
 
     def transform_single(self, text):
         return sp.hstack([x.transform_single(text) for x in self.extractors])
@@ -282,6 +339,6 @@ class Hstack:
     def batch_transform(self, texts):  return [self.transform_single(text) for text in texts]
 
     def transform(self, texts, input_split= False, merge_output= True):
-        if self.wb.verbose> 0:  print "Extract concatenated dense features"
+        if self.wb.verbose> 0:  print("Extract concatenated dense features")
         return self.wb.parallelize_batches(int(self.wb.procs / 2), batch_transform, texts, [self],
                                            input_split=input_split, merge_output=merge_output)

@@ -1,6 +1,6 @@
 # cython: boundscheck=False, wraparound=False, cdivision=True
 import numpy as np
-import cPickle as pkl
+import pickle as pkl
 import gzip
 cimport cython
 from cpython cimport array
@@ -145,6 +145,7 @@ cdef class NN_ReLU_H1:
 		rand= np.random.RandomState(seed)
 
 		for iter in range(self.iters):
+			e_total= 0.0
 			for row in range(row_count):
 				ptr= X_indptr[row]
 				lenn= X_indptr[row+1]-ptr
@@ -154,7 +155,7 @@ cdef class NN_ReLU_H1:
 				e_total+= fabs(e)
 				e += (rand.rand() - 0.5) * e_noise
 				update_single(inds, vals, lenn, D, D_nn, e, alpha, L2, w0, w1, z, c0, c1, threads)
-		if verbose > 0:  print "Total e:", e_total
+			if verbose > 0:  print "Total e:", e_total
 
 	def predict_layer(self, X, int layer, int threads= 0):
 		if threads==0:  threads= self.threads
@@ -177,7 +178,7 @@ cdef class NN_ReLU_H1:
 			predict_single(inds, vals, lenn, D, D_nn, w0, w1, &pp[row][0], threads)
 		return p
 
-
+	#Pickling needs to be fixed.
 	# def pickle_model(self, filename):
 	# 	with gzip.open(filename, 'wb') as model_file:
 	# 		pkl.dump(self.get_params(), model_file, protocol=2)

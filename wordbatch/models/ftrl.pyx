@@ -1,6 +1,5 @@
 # cython: boundscheck=False, wraparound=False, cdivision=True
 import numpy as np
-import cPickle as pkl
 import gzip
 cimport cython
 from cpython cimport array
@@ -9,6 +8,11 @@ cimport numpy as np
 from cython.parallel import prange
 from libc.math cimport exp, log, fmax, fmin, sqrt, fabs
 import multiprocessing
+import sys
+if sys.version_info.major == 3:
+	import pickle as pkl
+else:
+	import cPickle as pkl
 
 np.import_array()
 
@@ -137,6 +141,7 @@ cdef class FTRL:
 		cdef int* inds, indptr
 		cdef double* vals
 		for iter in range(self.iters):
+			e_total= 0.0
 			for row in range(row_count):
 				ptr= X_indptr[row]
 				lenn= X_indptr[row+1]-ptr
@@ -147,7 +152,7 @@ cdef class FTRL:
 														threads), inv_link)-ys[row]
 				update_single(inds, vals, lenn, e, ialpha, w, z, n, bias_term, threads)
 				e_total+= fabs(e)
-		if verbose > 0:  print "Total e:", e_total
+			if verbose > 0:  print "Total e:", e_total
 
 	def pickle_model(self, filename):
 		with gzip.open(filename, 'wb') as model_file:

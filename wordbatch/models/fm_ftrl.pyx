@@ -1,6 +1,5 @@
 # cython: boundscheck=False, wraparound=False, cdivision=True
 import numpy as np
-import cPickle as pkl
 import gzip
 cimport cython
 from cpython cimport array
@@ -10,6 +9,12 @@ from cython.parallel import prange
 from libc.math cimport exp, log, fmax, fmin, sqrt, fabs
 import multiprocessing
 import random
+import sys
+import sys
+if sys.version_info.major == 3:
+	import pickle as pkl
+else:
+	import cPickle as pkl
 
 np.import_array()
 
@@ -206,6 +211,7 @@ cdef class FM_FTRL:
 
 		rand= np.random.RandomState(seed)
 		for iter in range(self.iters):
+			e_total= 0.0
 			for row in range(row_count):
 				ptr= X_indptr[row]
 				lenn= X_indptr[row+1]-ptr
@@ -219,7 +225,7 @@ cdef class FM_FTRL:
 				e += (rand.rand() - 0.5) * e_noise
 				update_single(inds, vals, lenn, e, ialpha, w, z, n, alpha_fm, L2_fm, w_fm, z_fm, n_fm, D_fm,
 							  bias_term, threads)
-		if verbose>0:  print "Total e:", e_total
+			if verbose>0:  print "Total e:", e_total
 
 	def pickle_model(self, filename):
 		with gzip.open(filename, 'wb') as model_file:
