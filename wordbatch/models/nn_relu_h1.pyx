@@ -178,17 +178,41 @@ cdef class NN_ReLU_H1:
 			predict_single(inds, vals, lenn, D, D_nn, w0, w1, &pp[row][0], threads)
 		return p
 
-	#Pickling needs to be fixed.
-	# def pickle_model(self, filename):
-	# 	with gzip.open(filename, 'wb') as model_file:
-	# 		pkl.dump(self.get_params(), model_file, protocol=2)
-    #
-	# def unpickle_model(self, filename):
-	# 	self.set_params(pkl.load(gzip.open(filename, 'rb')))
-    #
-	# def __getstate__(self):
-	# 	return (self.alpha, self.beta, self.L1, self.L2, self.D, self.iters,
-	# 			np.asarray(self.w), np.asarray(self.z), np.asarray(self.n), self.inv_link)
-    #
-	# def __setstate__(self, params):
-	# 	(self.alpha, self.beta, self.L1, self.L2, self.D, self.iters, self.w, self.z, self.n, self.inv_link)= params
+	def pickle_model(self, filename):
+		with gzip.open(filename, 'wb') as model_file:
+			pkl.dump(self.get_params(), model_file, protocol=2)
+
+	def unpickle_model(self, filename):
+		self.set_params(pkl.load(gzip.open(filename, 'rb')))
+
+	def __getstate__(self):
+		return (self.alpha,
+			self.L2,
+			self.e_noise,
+			self.D,
+			self.D_nn,
+			self.iters,
+			self.threads,
+			np.asarray(self.w0),
+			np.asarray(self.w1),
+			np.asarray(self.z),
+			np.asarray(self.c0),
+			np.asarray(self.c1),
+			self.inv_link,
+			self.seed)
+
+	def __setstate__(self, params):
+		(self.alpha,
+		 self.L2,
+		 self.e_noise,
+		 self.D,
+		 self.D_nn,
+		 self.iters,
+		 self.threads,
+		 self.w0,
+		 self.w1,
+		 self.z,
+		 self.c0,
+		 self.c1,
+		 self.inv_link,
+		 self.seed)= params

@@ -47,15 +47,15 @@ Getting started
 | import wordbatch
 | from wordbatch.models import FTRL
 | from wordbatch.extractors import WordBag
-| vct= wordbatch.WordBatch(extractor=(WordBag, {"hash_ngrams":2, "hash_ngrams_weights":[0.5, -1.0], "hash_size":2**23, "norm":'l2', "tf":'log', "idf":50.0}))
+| wb= wordbatch.WordBatch(extractor=(WordBag, {"hash_ngrams":2, "hash_ngrams_weights":[0.5, -1.0], "hash_size":2**23, "norm":'l2', "tf":'log', "idf":50.0}))
 | clf= FTRL(alpha=1.0, beta=1.0, L1=0.00001, L2=1.0, D=2 ** 25, iters=1)
 |
 | train_texts= ["Cut down a tree with a herring? It can't be done.", "Don't say that word.", "How can we not say the word if you don't tell us what it is?"]
 | train_labels= [1, 0, 1]
 | test_texts= ["Wait! I said it! I said it! Ooh! I said it again!"]
 |
-| clf.fit(vct.transform(train_texts), train_labels)
-| preds= clf.predict(vct.transform(test_texts))
+| clf.fit(wb.transform(train_texts), train_labels)
+| preds= clf.predict(wb.transform(test_texts))
 
 
 Example scripts
@@ -63,10 +63,10 @@ Example scripts
 
 The directory /scripts/ contains four scripts for demonstrating the basic extractors, and a Scikit-learn ensemble model to combine predictions. To run the scripts you should first install the dependencies: Keras, NLTK, TextBlob and Pandas. The scripts also use the TripAdvisor dataset (http://times.cs.uiuc.edu/~wang296/Data/) for training models, and the precomputed word embeddings glove.twitter.27B.100d and glove.6B.50d (http://nlp.stanford.edu/projects/glove/). The test data from Crowdflower Open data & Kaggle is provided in the /data directory.
 
-- wordhash_regressor.py shows wordbatch.WordHash, and feature extraction concurrent with file reading
-- wordhash_regressor.py shows wordbatch.WordBag, and online feature extraction and parallel FTRL training
-- wordseq_regressor.py shows wordbatch.WordSeq, and training a 1D-convnet regression model
-- wordvec_regressor.py shows wordbatch.WordVec, and combining word vector embeddings for FTRL training
+- wordhash_regressor.py shows wordbatch.extractors.WordHash, and feature extraction concurrent with file reading
+- wordbag_regressor.py shows wordbatch.extractors.WordBag, and online feature extraction and parallel FTRL training
+- wordseq_regressor.py shows wordbatch.extractors.WordSeq, and training a 1D-convnet regression model
+- wordvec_regressor.py shows wordbatch.extractors.WordVec, and combining word vector embeddings for FTRL training
 - classify_airline_sentiment.py show how to combine predictions from the four scripts using a Random Forest Regressor on the airline sentiment data
 
 Spark integration
