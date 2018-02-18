@@ -96,13 +96,9 @@ class WordBatch(object):
         if procs==0:  procs= multiprocessing.cpu_count()
         self.verbose= verbose
         self.use_sc = use_sc
-        #self.procs= procs
-        #self.minibatch_size= minibatch_size
-        #self.timeout= timeout
-        #self.method= method
 
         self.batcher= batcher.Batcher(procs, minibatch_size, timeout, use_sc, method, verbose)
-        self.dictionary_freeze= False
+        self.freeze= False
         self.dictionary= {}
         self.dft= Counter()
         self.raw_dft= Counter()
@@ -125,6 +121,12 @@ class WordBatch(object):
 
         self.set_extractor(extractor)
 
+    def reset(self):
+        self.dictionary = {}
+        self.dft = Counter()
+        self.raw_dft = Counter()
+        return self
+
     def set_extractor(self, extractor=None):
         if extractor != None:
             if type(extractor) != tuple and type(extractor) != list:  self.extractor = extractor(self, {})
@@ -141,6 +143,7 @@ class WordBatch(object):
 
 
     def update_dictionary(self, texts, dft, dictionary, min_df, input_split= False):
+        #Update document frequencies.
         dfts2= self.parallelize_batches(batch_get_dfs, texts, [], input_split= input_split,
                                         merge_output=False)
         if self.use_sc==True:  dfts2= [batch[1] for batch in dfts2.collect()]
@@ -148,6 +151,7 @@ class WordBatch(object):
         for dft2 in dfts2:  dft.update(dft2)
 
         if dictionary!=None:
+            #Add entries. Online pruning only used to prevent inclusion into dictionary
             sorted_dft, min_df2, max_df2 = self.get_pruning_dft(dft)
             for word, df in sorted_dft:
                 if len(dictionary)>= self.n_words: break
@@ -156,17 +160,9 @@ class WordBatch(object):
                 dictionary[word] = len(dictionary)+1
                 if self.verbose>2: print("Add word to dictionary:", word, dft[word], dictionary[word])
 
-        if min_df>0:
-            if self.verbose>1: print("Document Frequency Table size:", len(dft))
-            if type(min_df) == type(1):
-                for word in list(dft.keys()):
-                    if dft[word]<min_df:  dft.pop(word)
-            else:
-                for word in list(dft.keys()):
-                    if float(dft[word])/self.doc_count < min_df:  dft.pop(word)
-            if self.verbose > 1: print("Document Frequency Table pruned size:", len(dft))
-
-    def prune_dictionary(self, n_words=None, min_df=None, max_df=None, re_encode= False):
+    def prune_dictionary(self, n_words=None, min_df=None, max_df=None, re_encode= False, prune_dfs= True,
+                         set_n_words= True):
+        #Prune dictionary. Optionally prune document frequency table as well
         if n_words!=None: self.n_words= n_words
         if min_df!=None: self.min_df= min_df
         if max_df!= None: self.max_df= max_df
@@ -182,15 +178,15 @@ class WordBatch(object):
                 else:  continue
             c+= 1
             if c > n_words or df < min_df2 or df > max_df2:
-                dft.pop(word)
+                if prune_dfs: dft.pop(word)
                 dictionary.pop(word)
             elif re_encode:
                 dictionary[word]= c
+        if set_n_words:  self.n_words= len(dictionary)
 
     def normalize_texts(self, texts, input_split=False, merge_output=True):
         texts2= self.parallelize_batches(batch_normalize_texts, texts, [self.normalize_text],
                                           input_split=input_split, merge_output=merge_output)
-        #if self.use_sc==False:  return [item for sublist in texts2 for item in sublist]
         return texts2
 
     def normalize_wordforms(self, texts, input_split= False, merge_output= True):
@@ -215,46 +211,52 @@ class WordBatch(object):
         if self.verbose > 0:  print("Make word normalizations")
         return self.parallelize_batches(batch_correct_spellings, texts, [corrs, self.pos_tagger],
                                         input_split=input_split, merge_output=merge_output)
-        #if self.use_sc== False:  return [item for sublist in texts for item in sublist]
-        #return texts
 
-    def fit(self, texts, labels= None, return_texts= False, input_split= False, merge_output= True):
+    def process(self, texts, input_split= False, reset= True, update= True):
+        if reset:  self.reset()
+        if self.freeze:  update= False
         if self.verbose > 0:  print("Normalize text")
         if self.normalize_text != None:
             texts= self.normalize_texts(texts, input_split= input_split, merge_output= False)
             input_split= True
         if self.spellcor_count> 0 or self.stemmer!=None:
             if self.verbose > 0:  print("Update raw dfts")
-            self.update_dictionary(texts, self.raw_dft, None, self.raw_min_df, input_split= input_split)
+            if update:  self.update_dictionary(texts, self.raw_dft, None, self.raw_min_df, input_split= input_split)
             if self.verbose > 0:  print("Normalize wordforms")
             texts= self.normalize_wordforms(texts, input_split= input_split, merge_output= False)
             input_split= True
             if self.preserve_raw_dft==False:  self.raw_dft= Counter()
-        if not(self.dictionary_freeze):  self.update_dictionary(texts, self.dft, self.dictionary, self.min_df,
-                                                                input_split= input_split)
+        if update:
+            self.update_dictionary(texts, self.dft, self.dictionary, self.min_df, input_split= input_split)
         if self.verbose> 2: print("len(self.raw_dft):", len(self.raw_dft), "len(self.dft):", len(self.dft))
-        if return_texts:
-            if merge_output:  return self.merge_batches(texts)
-            else:  return texts
+        return texts
 
-    def fit_transform(self, texts, labels=None, extractor= None, cache_features= None, input_split= False):
-        return self.transform(texts, labels, extractor, cache_features, input_split)
+    def fit(self, texts, input_split= False, reset= True):
+        self.process(texts, input_split, reset=reset, update= True)
+        return self
 
-    def partial_fit(self, texts, labels=None, input_split= False, merge_output= True):
-        return self.fit(texts, labels, input_split, merge_output)
-
-    def transform(self, texts, labels= None, extractor= None, cache_features= None, input_split= False):
+    def transform(self, texts, extractor= None, cache_features= None, input_split= False, reset= False, update= False):
         if self.use_sc==True:  cache_features= None  #No feature caching with Spark
         if extractor== None:  extractor= self.extractor
         if cache_features != None and os.path.exists(cache_features):  return extractor.load_features(cache_features)
         if not(input_split):  texts= self.split_batches(texts)
-        texts= self.fit(texts, return_texts=True, input_split=True, merge_output=False)
+
+        texts= self.process(texts, input_split=True, reset=reset, update= update)
         if extractor!= None:
             texts= extractor.transform(texts, input_split= True, merge_output= True)
             if cache_features!=None:  extractor.save_features(cache_features, texts)
             return texts
         else:
             return self.merge_batches(texts)
+
+    def partial_fit(self, texts, input_split=False):
+        return self.fit(texts, input_split, reset=False)
+
+    def fit_transform(self, texts, extractor=None, cache_features=None, input_split=False, reset=True):
+        return self.transform(texts, extractor, cache_features, input_split, reset, update=True)
+
+    def partial_fit_transform(self, texts, extractor=None, cache_features=None, input_split=False):
+        return self.transform(texts, extractor, cache_features, input_split, reset=False, update=True)
 
     def predict_parallel(self, texts, clf, procs=None):
         if procs==None: procs= int(self.batcher.procs / 2)

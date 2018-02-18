@@ -26,8 +26,8 @@ cdef double predict_single(int* inds, double* vals, int lenn,
 						   double L1, double baL2, double ialpha, double beta,
 						   double* w, double* z, double* n,
 						   double* w_fm, double* z_fm, double* n_fm, double weight_fm,
-						   unsigned int D_fm, bint bias_term, int threads):
-	cdef unsigned int i, ii, k
+						   int D_fm, bint bias_term, int threads):
+	cdef int i, ii, k
 	cdef double sign, zi, d, wi, wi2, wfmk, e= 0.0, e2= 0.0
 
 	if bias_term:
@@ -58,9 +58,9 @@ cdef double predict_single(int* inds, double* vals, int lenn,
 cdef void update_single(int* inds, double* vals, int lenn, double e,
 						double ialpha, double* w, double* z, double* n,
 						double alpha_fm, double L2_fm,
-					    double* w_fm, double* z_fm, double* n_fm,
-					    unsigned int D_fm, bint bias_term, int threads) nogil:
-	cdef unsigned int i, ii, k
+						double* w_fm, double* z_fm, double* n_fm,
+					    int D_fm, bint bias_term, int threads) nogil:
+	cdef int i, ii, k
 	cdef double g, g2, ni, v, lr, e2= e**2, reg, L2_fme= L2_fm / e
 	cdef double *z_fmi
 	if bias_term: #Update bias with FTRL-proximal
@@ -111,6 +111,7 @@ cdef class FM_FTRL:
 	cdef int inv_link
 	cdef bint bias_term
 	cdef int seed
+	cdef int verbose
 
 	def __init__(self,
 				 double alpha=0.1,
@@ -123,12 +124,13 @@ cdef class FM_FTRL:
 				 double init_fm= 0.01,
 				 unsigned int D_fm=20,
 				 double weight_fm= 1.0,
-			     double e_noise= 0.0001,
+				 double e_noise= 0.0001,
 				 unsigned int iters=1,
-				 inv_link= "sigmoid",
+				 inv_link= "identity",
 				 bint bias_term=1,
 				 int threads= 0,
-				 int seed= 0):
+				 int seed= 0,
+				 int verbose=1):
 
 		self.alpha= alpha
 		self.beta= beta
@@ -137,6 +139,7 @@ cdef class FM_FTRL:
 		self.D= D
 		self.alpha_fm= alpha_fm
 		self.L2_fm= L2_fm
+		self.init_fm= init_fm
 		self.D_fm= D_fm
 		self.weight_fm= weight_fm
 		self.e_noise= e_noise
@@ -146,24 +149,26 @@ cdef class FM_FTRL:
 		if inv_link=="sigmoid":  self.inv_link= 1
 		if inv_link=="identity":  self.inv_link= 0
 		self.bias_term= bias_term
+		self.seed = seed
+		self.verbose= verbose
+		self.reset()
 
-		self.w= np.ones((D), dtype=np.float64)
-		self.z= np.zeros((D), dtype=np.float64)
-		self.n= np.zeros((D), dtype=np.float64)
-
+	def reset(self):
+		D= self.D
+		D_fm= self.D_fm
+		self.w = np.ones((D), dtype=np.float64)
+		self.z = np.zeros((D), dtype=np.float64)
+		self.n = np.zeros((D), dtype=np.float64)
 		self.w_fm = np.zeros(D_fm, dtype=np.float64)
-		self.seed= seed
-		rand= np.random.RandomState(seed)
-		self.z_fm= (rand.rand(D*D_fm)-0.5)* init_fm
-
-		self.n_fm= np.zeros(D, dtype=np.float64)
-
+		rand = np.random.RandomState(self.seed)
+		self.z_fm = (rand.rand(D * D_fm) - 0.5) * self.init_fm
+		self.n_fm = np.zeros(D, dtype=np.float64)
 
 	def predict(self, X, int threads= 0):
 		if threads==0:  threads= self.threads
 		if type(X) != ssp.csr.csr_matrix:  X= ssp.csr_matrix(X, dtype=np.float64)
 		return self.predict_f(np.ascontiguousarray(X.data), np.ascontiguousarray(X.indices),
-		               		  np.ascontiguousarray(X.indptr), threads)
+							  np.ascontiguousarray(X.indptr), threads)
 
 	def predict_f(self, np.ndarray[double, ndim=1, mode='c'] X_data,
 					np.ndarray[int, ndim=1, mode='c'] X_indices,
@@ -171,7 +176,7 @@ cdef class FM_FTRL:
 		cdef double ialpha= 1.0/self.alpha, L1= self.L1, beta= self.beta, baL2= beta * ialpha + self.L2, \
 					weight_fm= self.weight_fm
 		cdef double *w= &self.w[0], *z= &self.z[0], *n= &self.n[0], *n_fm= &self.n_fm[0], \
-				    *z_fm= &self.z_fm[0], *w_fm= &self.w_fm[0]
+					*z_fm= &self.z_fm[0], *w_fm= &self.w_fm[0]
 		cdef unsigned int D_fm= self.D_fm, k
 		p= np.zeros(X_indptr.shape[0]-1, dtype= np.float64)
 		cdef double[:] pp= p
@@ -188,22 +193,26 @@ cdef class FM_FTRL:
 											   D_fm, bias_term, threads), self.inv_link)
 		return p
 
-	def fit(self, X, y, float alpha_fm= -1, int threads= 0, seed= 0, int verbose=0):
-		if alpha_fm!=-1:  self.alpha_fm= alpha_fm
+
+	def partial_fit(self, X, y, int threads = 0, int seed = 0):
+		return self.fit(X, y, threads = 0, seed = 0, reset= False)
+
+	def fit(self, X, y, int threads= 0, int seed= 0, reset= True):
+		if reset:  self.reset()
 		if threads == 0:  threads= self.threads
 		if type(X) != ssp.csr.csr_matrix:  X = ssp.csr_matrix(X, dtype=np.float64)
 		if type(y) != np.array:  y = np.array(y, dtype=np.float64)
-		self.fit_f(X.data, X.indices, X.indptr, y, threads, seed, verbose)
+		return self.fit_f(X.data, X.indices, X.indptr, y, threads, seed)
 
 	def fit_f(self, np.ndarray[double, ndim=1, mode='c'] X_data,
 					np.ndarray[int, ndim=1, mode='c'] X_indices,
 					np.ndarray[int, ndim=1, mode='c'] X_indptr,
-					np.ndarray[double, ndim=1, mode='c'] y, int threads, int seed, int verbose):
+					np.ndarray[double, ndim=1, mode='c'] y, int threads, int seed):
 		cdef double ialpha= 1.0/self.alpha, L1= self.L1, beta= self.beta, baL2= beta * ialpha + self.L2, \
 					alpha_fm= self.alpha_fm, weight_fm= self.weight_fm, L2_fm= self.L2_fm, e, e_total= 0, zfmi, \
 					e_noise= self.e_noise
 		cdef double *w= &self.w[0], *z= &self.z[0], *n= &self.n[0], *n_fm= &self.n_fm[0], \
-				    *z_fm= &self.z_fm[0], *w_fm= &self.w_fm[0], *ys= <double*> y.data
+					*z_fm= &self.z_fm[0], *w_fm= &self.w_fm[0], *ys= <double*> y.data
 		cdef unsigned int D_fm= self.D_fm, i, lenn, ptr, row_count= X_indptr.shape[0]-1, row, inv_link= self.inv_link
 		cdef bint bias_term= self.bias_term
 		cdef int* inds, indptr
@@ -225,7 +234,7 @@ cdef class FM_FTRL:
 				e += (rand.rand() - 0.5) * e_noise
 				update_single(inds, vals, lenn, e, ialpha, w, z, n, alpha_fm, L2_fm, w_fm, z_fm, n_fm, D_fm,
 							  bias_term, threads)
-			if verbose>0:  print "Total e:", e_total
+			if self.verbose>0:  print "Total e:", e_total
 
 	def pickle_model(self, filename):
 		with gzip.open(filename, 'wb') as model_file:

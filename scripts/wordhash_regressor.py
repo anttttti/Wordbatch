@@ -44,7 +44,7 @@ class WordhashRegressor(object):
         else: self.train(datadir, pickle_model)
 
     def transform_batch(self, texts, batch_data):
-        batch_data.texts= self.wb.transform(texts)
+        batch_data.texts= self.wb.fit_transform(texts, reset= False)
 
     def train(self, datadir, pickle_model=""):
         texts= []
@@ -79,7 +79,7 @@ class WordhashRegressor(object):
         if p_input != None:
             p_input.join()
             texts2.append(batch_data.texts)
-            texts2.append(self.wb.transform(texts))
+            texts2.append(self.wb.fit_transform(texts, reset= False))
         del (texts)
         if len(texts2) == 1:  texts= texts2[0]
         else:  texts= ssp.vstack(texts2)

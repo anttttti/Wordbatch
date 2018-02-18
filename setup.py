@@ -2,10 +2,15 @@
 from setuptools import setup, Extension
 from Cython.Distutils import build_ext
 import numpy
+import os
 
+if os.name == 'nt':
+    fopenmp_arg= "/openmp"
+else:
+    fopenmp_arg = "-fopenmp"
 setup(
     name='Wordbatch',
-    version='1.3.0',
+    version='1.3.1',
     description='Parallel text feature extraction for machine learning',
     url='https://github.com/anttttti/Wordbatch',
     author='Antti Puurula',
@@ -37,30 +42,30 @@ setup(
                             libraries= [],
                             include_dirs=[numpy.get_include(), '.'],
                             extra_compile_args = ["-O3", "-ffast-math"],
-                            extra_link_args=['-fopenmp']),
+                            extra_link_args=[fopenmp_arg]),
                   Extension("wordbatch.models.ftrl",
                             ["wordbatch/models/ftrl.pyx"],
                             libraries= [],
                             include_dirs=[numpy.get_include(), '.'],
-                            extra_compile_args = ["-O3", "-fopenmp", "-ffast-math"],
-                            extra_link_args=['-fopenmp']),
+                            extra_compile_args = ["-O3", fopenmp_arg, "-ffast-math"],
+                            extra_link_args=[fopenmp_arg]),
                   Extension("wordbatch.models.fm_ftrl",
                             ["wordbatch/models/fm_ftrl.pyx"],
                             libraries= [],
                             include_dirs=[numpy.get_include(), '.'],
-                            extra_compile_args = ["-O3", "-fopenmp", "-ffast-math"],
-                            extra_link_args=['-fopenmp']),
+                            extra_compile_args = ["-O3", fopenmp_arg, "-ffast-math"],
+                            extra_link_args=[fopenmp_arg]),
                   Extension("wordbatch.models.nn_relu_h1",
                             ["wordbatch/models/nn_relu_h1.pyx"],
                             libraries= [],
                             include_dirs=[numpy.get_include(), '.'],
-                            extra_compile_args = ["-O3", "-fopenmp", "-ffast-math"],
-                            extra_link_args=['-fopenmp']),
+                            extra_compile_args = ["-O3", fopenmp_arg, "-ffast-math"],
+                            extra_link_args=[fopenmp_arg]),
                   Extension("wordbatch.models.nn_relu_h2",
                             ["wordbatch/models/nn_relu_h2.pyx"],
                             libraries= [],
                             include_dirs=[numpy.get_include(), '.'],
-                            extra_compile_args = ["-O3", "-fopenmp", "-ffast-math"],
-                            extra_link_args=['-fopenmp'])
+                            extra_compile_args = ["-O3", fopenmp_arg, "-ffast-math"],
+                            extra_link_args=[fopenmp_arg])
         ]
 )

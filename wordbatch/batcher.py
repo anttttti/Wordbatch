@@ -16,7 +16,6 @@ if sys.version_info.major == 3:
 else:
     import copy_reg
 
-WB_DOC_CNT= u'###DOC_CNT###'
 def _pickle_method(m):
     if sys.version_info.major == 3:
         if m.im_self is None:  return getattr, (m.im_self.__class__, m.im_func.__name__)
@@ -68,18 +67,16 @@ class Batcher(object):
         data_type= type(data)
         if data_type is list or data_type is tuple:  len_data= len(data)
         else:  len_data= data.shape[0]
-        if minibatch_size> len_data:  minibatch_size= len_data
         if data_type == pd.DataFrame:
             data_split = [data.iloc[x * minibatch_size:(x + 1) * minibatch_size] for x in
                           range(int(ceil(len_data / minibatch_size)))]
         else:
-            data_split= [data[x* minibatch_size:(x+1)*minibatch_size]
+            data_split= [data[x* minibatch_size:min(len_data, (x+1)*minibatch_size)]
                          for x in range(int(ceil(len_data/minibatch_size)))]
         return data_split
 
     def merge_batches(self, data):
-        if isinstance(data[0], ssp.csr_matrix):
-            return ssp.vstack(data)
+        if isinstance(data[0], ssp.csr_matrix):  return ssp.vstack(data)
         return [item for sublist in data for item in sublist]
 
     def parallelize_batches(self, task, data, args, method=None, timeout=-1, rdd_col= 1, input_split=False,

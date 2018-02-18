@@ -99,6 +99,7 @@ class WordBag:
 
     def transform_single(self, text):
         wb= self.wb
+        dictionary= wb.dictionary
         cdef int fc_hash_ngrams= self.hash_ngrams, word_id, df= 1, df2, hashed, doc_count= wb.doc_count, \
                                     use_idf= 0, seed= self.seed
         cdef float idf_lift= 0.0, idf= 1.0, weight, norm= 1.0, norm_idf= 1.0
@@ -117,16 +118,17 @@ class WordBag:
         cdef TextRow textrow= TextRow()
         for x from 0 <= x < len(text):
             word= text[x]
-            if not(wb.dictionary_freeze):  df= wb.dft[word]
-            if df==0: continue
+            if len(dictionary)!=0:
+                word_id = dictionary.get(word, -1)
+                if word_id == -1:  continue
+            df= wb.dft.get(word, 0)
             if use_idf:
+                if df == 0: continue
                 idf= log(max(1.0, idf_lift + doc_count / df)) * norm_idf
+                #print(word, idf, df, log(max(1.0, idf_lift + doc_count / df)), norm_idf)
                 if idf== 0.0:  continue
 
-            if fc_hash_ngrams==0:
-               word_id= wb.dictionary.get(word, -1)
-               if word_id== -1:  continue
-               textrow.append(word_id, 1, idf)
+            if fc_hash_ngrams==0:  textrow.append(word_id, 1, idf)
 
             for y from 0 <= y < min(fc_hash_ngrams, x+1):
                 hashed= murmurhash3_bytes_s32((" ".join(text[x-y:x+1])).encode("utf-8"), seed)
@@ -201,7 +203,7 @@ class WordHash:
     def transform(self, texts, input_split= False, merge_output= True):
         if self.wb.verbose> 0:  print("Extract wordhashes")
         return self.wb.parallelize_batches(batch_transform, texts, [self], input_split= input_split,
-                                           merge_output= True, procs= int(self.wb.batcher.procs / 2))
+                                           merge_output= merge_output, procs= int(self.wb.batcher.procs / 2))
 
     def save_features(self, file, features):
         csr_to_lz4(file, features)
@@ -231,7 +233,7 @@ class WordSeq:
                 else:  wordseq= wordseq[:self.seq_maxlen]
             else:
                 if self.seq_padstart== True:  wordseq= [self.pad_id] * (self.seq_maxlen - len(wordseq)) + wordseq
-                else:  wordseq+= [self.pad_id] * (wb.seq_maxlen - len(wordseq))
+                else:  wordseq+= [self.pad_id] * (self.seq_maxlen - len(wordseq))
         return wordseq
 
     def batch_transform(self, texts):  return [self.transform_single(text) for text in texts]

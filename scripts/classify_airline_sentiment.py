@@ -37,30 +37,36 @@ if __name__ == "__main__":
 
     import wordbag_regressor
     print("Train wordbag regressor")
-    wordbag_regressor= wordbag_regressor.WordbagRegressor("../models/wordbag_model.pkl.gz", tripadvisor_dir)
-    #wordbag_regressor= wordbag_regressor.WordbagRegressor("../models/wordbag_model.pkl.gz")
-    df['wordbag_score']= wordbag_regressor.predict(df['text'].values)
+    #wb_regressor= wordbag_regressor.WordbagRegressor("../models/wordbag_model.pkl.gz", tripadvisor_dir)
+    wb_regressor= wordbag_regressor.WordbagRegressor("../models/wordbag_model.pkl.gz")
+    df['wordbag_score']= wb_regressor.predict(df['text'].values)
 
     import wordhash_regressor
     print("Train wordhash regressor")
-    wordhash_regressor= wordhash_regressor.WordhashRegressor("../models/wordhash_model.pkl.gz", tripadvisor_dir)
-    #wordhash_regressor= wordhash_regressor.WordhashRegressor("../models/wordhash_model.pkl.gz")
-    df['wordhash_score']= wordhash_regressor.predict(df['text'].values)
+    wh_regressor= wordhash_regressor.WordhashRegressor("../models/wordhash_model.pkl.gz", tripadvisor_dir)
+    #wh_regressor= wordhash_regressor.WordhashRegressor("../models/wordhash_model.pkl.gz")
+    df['wordhash_score']= wh_regressor.predict(df['text'].values)
 
     import wordseq_regressor
     print("Train wordseq regressor")
-    wordseq_regressor = wordseq_regressor.WordseqRegressor("../models/wordhash_model.pkl.gz", tripadvisor_dir)
-    #wordseq_regressor = wordseq_regressor.WordseqRegressor("../models/wordhash_model.pkl.gz")
-    df['wordseq_score']= wordseq_regressor.predict_batch(df['text'].values)
+    ws_regressor = wordseq_regressor.WordseqRegressor("../models/wordseq_model.pkl.gz", tripadvisor_dir)
+    #ws_regressor = wordseq_regressor.WordseqRegressor("../models/wordseq_model.pkl.gz")
+    df['wordseq_score']= ws_regressor.predict_batch(df['text'].values)
 
     import wordvec_regressor
     print("Train wordvec regressor")
-    wordvec_regressor= wordvec_regressor.WordvecRegressor("../models/wordseq_model.pkl.gz", tripadvisor_dir)
-    #wordvec_regressor= wordvec_regressor.WordvecRegressor("../models/wordseq_model.pkl.gz")
-    df['wordvec_score'] = wordvec_regressor.predict(df['text'].values)
+    wv_regressor= wordvec_regressor.WordvecRegressor("../models/wordvec_model.pkl.gz", tripadvisor_dir)
+    #wv_regressor= wordvec_regressor.WordvecRegressor("../models/wordvec_model.pkl.gz")
+    df['wordvec_score'] = wv_regressor.predict(df['text'].values)
 
     df['tweet_len']= df['text'].map(lambda x: log(1+len(x)))
     df['tweet_wordcount']= df['text'].map(lambda x: log(1+len(x.split())))
+
+
+
+    pd.to_pickle(df, "test.pkl")
+
+
 
     print(df)
     full_preds= np.zeros(df.shape[0])

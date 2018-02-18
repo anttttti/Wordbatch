@@ -16,9 +16,9 @@ cdef double inv_link_f(double e, int inv_link) nogil:
 	if inv_link==1:  return 1.0 / (1.0 + exp(-fmax(fmin(e, 35.0), -35.0)))
 	return e
 
-cdef double predict_single(int* inds, double* vals, int lenn, unsigned int D, unsigned int D_nn, unsigned int D_nn2,
+cdef double predict_single(int* inds, double* vals, int lenn,  int D,  int D_nn,  int D_nn2,
 				double* w0, double* w1, double* w2, double* z1, double* z2, int threads) nogil:
-	cdef unsigned int i, ii, j, k, DD_nn= D*D_nn, DD_nn2= D_nn*D_nn2
+	cdef int i, ii, j, k, DD_nn= D*D_nn, DD_nn2= D_nn*D_nn2
 	cdef double p, v, z1j, z2k
 	p= w2[D_nn2]
 	for k in prange(D_nn2, nogil=True, num_threads= threads):
@@ -37,10 +37,10 @@ cdef double predict_single(int* inds, double* vals, int lenn, unsigned int D, un
 			p+= w2[k] * z2k
 	return p
 
-cdef void update_single(int* inds, double* vals, int lenn, unsigned int D, unsigned int D_nn, unsigned int D_nn2,
+cdef void update_single(int* inds, double* vals, int lenn,  int D,  int D_nn,  int D_nn2,
 						double e, double alpha, double L2, double* w0, double* w1, double* w2, double* z1,
-					   	double* z2, double* c0, double* c1, double* c2, int threads) nogil:
-	cdef unsigned int i, ii, j, k, DD_nn= D*D_nn, DD_nn2= D_nn*D_nn2
+						double* z2, double* c0, double* c1, double* c2, int threads) nogil:
+	cdef int i, ii, j, k, DD_nn= D*D_nn, DD_nn2= D_nn*D_nn2
 	cdef double dldy= e, dldz1, dldz2, dldw0, dldw1, dldw2
 	w2[D_nn2]-= (dldy + L2 *w2[D_nn2]) * alpha
 	for k in range(D_nn2):
@@ -75,9 +75,9 @@ cdef class NN_ReLU_H2:
 
 	cdef unsigned int threads
 	cdef unsigned int iters
-	cdef unsigned int D
-	cdef unsigned int D_nn
-	cdef unsigned int D_nn2
+	cdef int D
+	cdef int D_nn
+	cdef int D_nn2
 	cdef double init_nn
 
 	cdef double L2
@@ -85,17 +85,18 @@ cdef class NN_ReLU_H2:
 	cdef double e_noise
 	cdef int inv_link
 	cdef int seed
+	cdef int verbose
 
 	def __init__(self,
 				 double alpha=0.1,
 				 double L2=0.001,
-			   	 double e_noise=0.001,
-				 unsigned int D=2**25,
-				 unsigned int D_nn=40,
-				 unsigned int D_nn2=40,
+				 double e_noise=0.001,
+				 int D=2**25,
+				 int D_nn=40,
+				 int D_nn2=40,
 				 double init_nn=0.0001,
 				 unsigned int iters=1,
-				 inv_link= "sigmoid",
+				 inv_link= "identity",
 				 int threads= 0,
 				 int seed= 0):
 
@@ -105,20 +106,25 @@ cdef class NN_ReLU_H2:
 		self.D= D
 		self.D_nn= D_nn
 		self.D_nn2= D_nn2
+		self.init_nn= init_nn
 		self.iters= iters
 		if threads==0:  threads= multiprocessing.cpu_count()-1
 		self.threads= threads
 		if inv_link=="sigmoid":  self.inv_link= 1
 		if inv_link=="identity":  self.inv_link= 0
-
 		self.seed = seed
-		rand= np.random.RandomState(seed)
+		self.reset()
 
+	def reset(self):
+		seed= self.seed
+		init_nn= self.init_nn
+		D= self.D
+		D_nn = self.D_nn
+		D_nn2 = self.D_nn2
+		rand= np.random.RandomState(seed)
 		self.w0 = (rand.rand((D + 1) * D_nn) - 0.5) * init_nn
 		self.w1 = (rand.rand((D_nn + 1) * D_nn2) - 0.3) * init_nn
 		self.w2 = (rand.rand(D_nn2 + 1) - 0.5) * init_nn
-
-
 		self.z1= np.zeros((D_nn,), dtype=np.float64)
 		self.z2= np.zeros((D_nn2,), dtype=np.float64)
 		self.c0= np.zeros((D,), dtype=np.float64)
@@ -137,7 +143,7 @@ cdef class NN_ReLU_H2:
 		p= np.zeros(X_indptr.shape[0]-1, dtype= np.float64)
 		cdef double *w0= &self.w0[0], *w1= &self.w1[0], *w2= &self.w2[0], *z1= &self.z1[0], *z2= &self.z2[0]
 		cdef double[:] pp= p
-		cdef unsigned int lenn, D= self.D, D_nn= self.D_nn, D_nn2= self.D_nn2, row_count= X_indptr.shape[0]-1, row, ptr
+		cdef int lenn, D= self.D, D_nn= self.D_nn, D_nn2= self.D_nn2, row_count= X_indptr.shape[0]-1, row, ptr
 		for row in range(row_count):
 			ptr= X_indptr[row]
 			lenn= X_indptr[row + 1] - ptr
@@ -147,22 +153,26 @@ cdef class NN_ReLU_H2:
 					self.inv_link)
 		return p
 
-	def fit(self, X, y, int threads= 0, int seed= 0, int verbose=0):
+	def partial_fit(self, X, y, int threads = 0, int seed = 0):
+		return self.fit(X, y, threads=0, seed=0, reset=False)
+
+	def fit(self, X, y, int threads= 0, int seed= 0, reset=True):
+		if reset:  self.reset()
 		if threads == 0:  threads= self.threads
 		if type(X) != ssp.csr.csr_matrix:  X = ssp.csr_matrix(X, dtype=np.float64)
 		if type(y) != np.array:  y = np.array(y, dtype=np.float64)
-		self.fit_f(X.data, X.indices, X.indptr, y, threads, seed, verbose)
+		self.fit_f(X.data, X.indices, X.indptr, y, threads, seed)
 
 	def fit_f(self, np.ndarray[double, ndim=1, mode='c'] X_data,
 					np.ndarray[int, ndim=1, mode='c'] X_indices,
 					np.ndarray[int, ndim=1, mode='c'] X_indptr,
-					np.ndarray[double, ndim=1, mode='c'] y, int threads, int seed, int verbose):
+					np.ndarray[double, ndim=1, mode='c'] y, int threads, int seed):
 		cdef double alpha= self.alpha, L2= self.L2, e_noise= self.e_noise, e, e_total= 0
 		cdef double *w0= &self.w0[0], *w1= &self.w1[0], *w2= &self.w2[0], *z1= &self.z1[0], *z2= &self.z2[0], \
 					*c0= &self.c0[0], *c1= &self.c1[0], *c2= &self.c2[0]
 		cdef double *ys= <double*> y.data
 		cdef unsigned int lenn, D= self.D, D_nn= self.D_nn, D_nn2= self.D_nn2, ptr, row_count= X_indptr.shape[0]-1, \
-				   			row, inv_link= self.inv_link, j=0, jj
+							row, inv_link= self.inv_link, j=0, jj
 		cdef int* inds, indptr
 		cdef double* vals
 		rand= np.random.RandomState(seed)
@@ -179,7 +189,7 @@ cdef class NN_ReLU_H2:
 				e_total+= fabs(e)
 				e += (rand.rand() - 0.5) * e_noise
 				update_single(inds, vals, lenn, D, D_nn, D_nn2, e, alpha, L2, w0, w1, w2, z1, z2, c0, c1, c2, threads)
-			if verbose > 0:  print "Total e:", e_total
+			if self.verbose > 0:  print "Total e:", e_total
 
 	def predict_layer(self, X, int layer, int threads= 0):
 		if threads==0:  threads= self.threads
@@ -208,13 +218,13 @@ cdef class NN_ReLU_H2:
 	# def pickle_model(self, filename):
 	# 	with gzip.open(filename, 'wb') as model_file:
 	# 		pkl.dump(self.get_params(), model_file, protocol=2)
-    #
+	#
 	# def unpickle_model(self, filename):
 	# 	self.set_params(pkl.load(gzip.open(filename, 'rb')))
-    #
+	#
 	# def __getstate__(self):
 	# 	return (self.alpha, self.beta, self.L1, self.L2, self.D, self.iters,
 	# 			np.asarray(self.w), np.asarray(self.z), np.asarray(self.n), self.inv_link)
-    #
+	#
 	# def __setstate__(self, params):
 	# 	(self.alpha, self.beta, self.L1, self.L2, self.D, self.iters, self.w, self.z, self.n, self.inv_link)= params

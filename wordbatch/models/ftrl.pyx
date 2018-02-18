@@ -71,6 +71,7 @@ cdef class FTRL:
 	cdef double beta
 	cdef int inv_link
 	cdef bint bias_term
+	cdef int verbose
 
 	def __init__(self,
 				 double alpha=0.1,
@@ -81,7 +82,8 @@ cdef class FTRL:
 				 unsigned int iters=1,
 				 int threads= 0,
 				 inv_link= "sigmoid",
-				 bint bias_term=1):
+				 bint bias_term=1,
+				 int verbose=1):
 
 		self.alpha= alpha
 		self.beta= beta
@@ -94,9 +96,14 @@ cdef class FTRL:
 		if inv_link=="sigmoid":  self.inv_link= 1
 		if inv_link=="identity":  self.inv_link= 0
 		self.bias_term= bias_term
-		self.w= np.zeros((D,), dtype=np.float64)
-		self.z= np.zeros((D,), dtype=np.float64)
-		self.n= np.zeros((D,), dtype=np.float64)
+		self.verbose= verbose
+		self.reset()
+
+	def reset(self):
+		D= self.D
+		self.w = np.zeros((D,), dtype=np.float64)
+		self.z = np.zeros((D,), dtype=np.float64)
+		self.n = np.zeros((D,), dtype=np.float64)
 
 	def predict(self, X, int threads= 0):
 		if threads==0:  threads= self.threads
@@ -123,17 +130,21 @@ cdef class FTRL:
 											   bias_term, threads), self.inv_link)
 		return p
 
-	def fit(self, X, y, int threads= 0, int verbose=0):
+	def partial_fit(self, X, y, int threads = 0):
+		return self.fit(X, y, threads = 0, reset= False)
+
+	def fit(self, X, y, int threads= 0, reset= True):
+		if reset:  self.reset()
 		if threads == 0:  threads= self.threads
 		if type(X) != ssp.csr.csr_matrix:  X = ssp.csr_matrix(X, dtype=np.float64)
 		if type(y) != np.array:  y = np.array(y, dtype=np.float64)
 		# self.fit_f(X, np.ascontiguousarray(X.data), np.ascontiguousarray(X.indices),
 		#           np.ascontiguousarray(X.indptr), y, threads)
-		self.fit_f(X.data, X.indices, X.indptr, y, threads, verbose)
+		self.fit_f(X.data, X.indices, X.indptr, y, threads)
 
 	def fit_f(self, np.ndarray[double, ndim=1, mode='c'] X_data,
 					np.ndarray[int, ndim=1, mode='c'] X_indices,
-					np.ndarray[int, ndim=1, mode='c'] X_indptr, y, int threads, int verbose):
+					np.ndarray[int, ndim=1, mode='c'] X_indptr, y, int threads):
 		cdef double ialpha= 1.0/self.alpha, L1= self.L1, beta= self.beta, baL2= beta * ialpha + self.L2, e, e_total= 0
 		cdef double[:] w= self.w, z= self.z, n= self.n, ys= y
 		cdef unsigned int lenn, ptr, row_count= X_indptr.shape[0]-1, row, inv_link= self.inv_link, j=0, jj
@@ -152,7 +163,7 @@ cdef class FTRL:
 														threads), inv_link)-ys[row]
 				update_single(inds, vals, lenn, e, ialpha, w, z, n, bias_term, threads)
 				e_total+= fabs(e)
-			if verbose > 0:  print "Total e:", e_total
+			if self.verbose > 0:  print "Total e:", e_total
 
 	def pickle_model(self, filename):
 		with gzip.open(filename, 'wb') as model_file:

@@ -46,9 +46,9 @@ class WordvecRegressor(object):
     def fit_batch(self, texts, labels, rcount):
         texts, labels = self.wb.shuffle_batch(texts, labels, rcount)
         print("Transforming", rcount)
-        texts= self.wb.transform(texts)
+        texts= self.wb.fit_transform(texts, reset= False)
         print("Training", rcount)
-        self.clf.fit(texts, labels)
+        self.clf.fit(texts, labels, reset= False)
 
     def train(self, datadir, pickle_model=""):
         texts= []
