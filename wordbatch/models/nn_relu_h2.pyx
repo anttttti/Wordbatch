@@ -1,6 +1,5 @@
 # cython: boundscheck=False, wraparound=False, cdivision=True
 import numpy as np
-import pickle as pkl
 import gzip
 cimport cython
 from cpython cimport array
@@ -9,11 +8,18 @@ cimport numpy as np
 from cython.parallel import prange
 from libc.math cimport exp, log, fmax, fmin, sqrt, fabs
 import multiprocessing
+import sys
+import randomstate.prng.xoroshiro128plus as rnd
+
+if sys.version_info.major == 3:
+	import pickle as pkl
+else:
+	import cPickle as pkl
 
 np.import_array()
 
 cdef double inv_link_f(double e, int inv_link) nogil:
-	if inv_link==1:  return 1.0 / (1.0 + exp(-fmax(fmin(e, 35.0), -35.0)))
+	if inv_link==1:  return 1.0 / (1.0 + exp(-fmax(fmin(e, 35.0), -35.0))) #Sigmoid + logloss
 	return e
 
 cdef double predict_single(int* inds, double* vals, int lenn,  int D,  int D_nn,  int D_nn2,
@@ -83,22 +89,25 @@ cdef class NN_ReLU_H2:
 	cdef double L2
 	cdef double alpha
 	cdef double e_noise
+	cdef double e_clip
 	cdef int inv_link
 	cdef int seed
 	cdef int verbose
 
 	def __init__(self,
 				 double alpha=0.1,
-				 double L2=0.001,
-				 double e_noise=0.001,
+				 double L2=0.00001,
 				 int D=2**25,
-				 int D_nn=40,
-				 int D_nn2=40,
-				 double init_nn=0.0001,
-				 unsigned int iters=1,
+				 int D_nn=12,
+				 int D_nn2=4,
+				 double init_nn=0.01,
+				 double e_noise=0.001,
+				 double e_clip=1.0,
+				 unsigned int iters=3,
 				 inv_link= "identity",
 				 int threads= 0,
-				 int seed= 0):
+				 int seed= 0,
+				 int verbose=1):
 
 		self.alpha= alpha
 		self.L2= L2
@@ -107,21 +116,23 @@ cdef class NN_ReLU_H2:
 		self.D_nn= D_nn
 		self.D_nn2= D_nn2
 		self.init_nn= init_nn
+		self.e_noise = e_noise
+		self.e_clip = e_clip
 		self.iters= iters
 		if threads==0:  threads= multiprocessing.cpu_count()-1
 		self.threads= threads
 		if inv_link=="sigmoid":  self.inv_link= 1
 		if inv_link=="identity":  self.inv_link= 0
 		self.seed = seed
+		self.verbose = verbose
 		self.reset()
 
 	def reset(self):
-		seed= self.seed
 		init_nn= self.init_nn
 		D= self.D
 		D_nn = self.D_nn
 		D_nn2 = self.D_nn2
-		rand= np.random.RandomState(seed)
+		rand = rnd.RandomState(seed=self.seed)
 		self.w0 = (rand.rand((D + 1) * D_nn) - 0.5) * init_nn
 		self.w1 = (rand.rand((D_nn + 1) * D_nn2) - 0.3) * init_nn
 		self.w2 = (rand.rand(D_nn2 + 1) - 0.5) * init_nn
@@ -167,7 +178,7 @@ cdef class NN_ReLU_H2:
 					np.ndarray[int, ndim=1, mode='c'] X_indices,
 					np.ndarray[int, ndim=1, mode='c'] X_indptr,
 					np.ndarray[double, ndim=1, mode='c'] y, int threads, int seed):
-		cdef double alpha= self.alpha, L2= self.L2, e_noise= self.e_noise, e, e_total= 0
+		cdef double alpha= self.alpha, L2= self.L2, e_noise= self.e_noise, e, e_total= 0, e_clip= self.e_clip, abs_e
 		cdef double *w0= &self.w0[0], *w1= &self.w1[0], *w2= &self.w2[0], *z1= &self.z1[0], *z2= &self.z2[0], \
 					*c0= &self.c0[0], *c1= &self.c1[0], *c2= &self.c2[0]
 		cdef double *ys= <double*> y.data
@@ -175,7 +186,7 @@ cdef class NN_ReLU_H2:
 							row, inv_link= self.inv_link, j=0, jj
 		cdef int* inds, indptr
 		cdef double* vals
-		rand= np.random.RandomState(seed)
+		rand = rnd.RandomState(seed=self.seed)
 
 		for iter in range(self.iters):
 			e_total= 0.0
@@ -186,8 +197,12 @@ cdef class NN_ReLU_H2:
 				vals= <double*> X_data.data+ptr
 				e= inv_link_f(predict_single(inds, vals, lenn, D, D_nn, D_nn2, w0, w1, w2, z1, z2, threads), \
 							  self.inv_link) -ys[row]
-				e_total+= fabs(e)
+				abs_e= fabs(e)
+				e_total+= abs_e
 				e += (rand.rand() - 0.5) * e_noise
+				if abs_e> e_clip:
+					if e>0:  e= e_clip
+					else:  e= -e_clip
 				update_single(inds, vals, lenn, D, D_nn, D_nn2, e, alpha, L2, w0, w1, w2, z1, z2, c0, c1, c2, threads)
 			if self.verbose > 0:  print "Total e:", e_total
 
@@ -214,17 +229,55 @@ cdef class NN_ReLU_H2:
 			else:  predict_single(inds, vals, lenn, D, D_nn, D_nn2, w0, w1, w2, z1, &pp[row][0], threads)
 		return p
 
-	#Pickling needs to be fixed.
-	# def pickle_model(self, filename):
-	# 	with gzip.open(filename, 'wb') as model_file:
-	# 		pkl.dump(self.get_params(), model_file, protocol=2)
-	#
-	# def unpickle_model(self, filename):
-	# 	self.set_params(pkl.load(gzip.open(filename, 'rb')))
-	#
-	# def __getstate__(self):
-	# 	return (self.alpha, self.beta, self.L1, self.L2, self.D, self.iters,
-	# 			np.asarray(self.w), np.asarray(self.z), np.asarray(self.n), self.inv_link)
-	#
-	# def __setstate__(self, params):
-	# 	(self.alpha, self.beta, self.L1, self.L2, self.D, self.iters, self.w, self.z, self.n, self.inv_link)= params
+
+	def pickle_model(self, filename):
+		with gzip.open(filename, 'wb') as model_file:
+			pkl.dump(self.get_params(), model_file, protocol=2)
+
+
+	def unpickle_model(self, filename):
+		self.set_params(pkl.load(gzip.open(filename, 'rb')))
+
+	def __getstate__(self):
+		return (self.alpha,
+				self.L2,
+				self.e_noise,
+				self.e_clip,
+				self.init_nn,
+				self.D,
+				self.D_nn,
+				self.D_nn2,
+				self.iters,
+				self.threads,
+				np.asarray(self.w1),
+				np.asarray(self.w2),
+				np.asarray(self.z1),
+				np.asarray(self.z2),
+				np.asarray(self.c0),
+				np.asarray(self.c1),
+				np.asarray(self.c2),
+				self.inv_link,
+				self.seed,
+				self.verbose)
+
+	def __setstate__(self, params):
+		(self.alpha,
+		 self.L2,
+		 self.e_noise,
+		 self.e_clip,
+		 self.init_nn,
+		 self.D,
+		 self.D_nn,
+		 self.D_nn2,
+		 self.iters,
+		 self.threads,
+		 self.w1,
+		 self.w2,
+		 self.z1,
+		 self.z2,
+		 self.c0,
+		 self.c1,
+		 self.c2,
+		 self.inv_link,
+		 self.seed,
+		 self.verbose) = params

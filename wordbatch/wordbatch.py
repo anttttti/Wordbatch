@@ -91,14 +91,14 @@ def default_normalize_text(text):
 class WordBatch(object):
     def __init__(self, normalize_text= default_normalize_text, spellcor_count=0, spellcor_dist= 2, n_words= 10000000,
                  min_df= 0, max_df= 1.0, raw_min_df= -1, procs= 0, minibatch_size= 20000,
-                 stemmer= None, pos_tagger= None, extractor=None, timeout= 600, use_sc= False,
+                 stemmer= None, pos_tagger= None, extractor=None, timeout= 600, use_sc= False, freeze= False,
                  method= "multiprocessing", verbose= 1):
         if procs==0:  procs= multiprocessing.cpu_count()
         self.verbose= verbose
         self.use_sc = use_sc
 
         self.batcher= batcher.Batcher(procs, minibatch_size, timeout, use_sc, method, verbose)
-        self.freeze= False
+        self.freeze= freeze
         self.dictionary= {}
         self.dft= Counter()
         self.raw_dft= Counter()

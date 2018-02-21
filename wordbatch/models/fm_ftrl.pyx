@@ -8,9 +8,9 @@ cimport numpy as np
 from cython.parallel import prange
 from libc.math cimport exp, log, fmax, fmin, sqrt, fabs
 import multiprocessing
-import random
 import sys
-import sys
+import randomstate.prng.xoroshiro128plus as rnd
+
 if sys.version_info.major == 3:
 	import pickle as pkl
 else:
@@ -18,15 +18,13 @@ else:
 
 np.import_array()
 
-cdef double inv_link_f(double e, int inv_link):
-	if inv_link==1:  return 1.0 / (1.0 + exp(-fmax(fmin(e, 35.0), -35.0)))
+cdef double inv_link_f(double e, int inv_link) nogil:
+	if inv_link==1:  return 1.0 / (1.0 + exp(-fmax(fmin(e, 35.0), -35.0))) #Sigmoid + logloss
 	return e
 
-cdef double predict_single(int* inds, double* vals, int lenn,
-						   double L1, double baL2, double ialpha, double beta,
-						   double* w, double* z, double* n,
-						   double* w_fm, double* z_fm, double* n_fm, double weight_fm,
-						   int D_fm, bint bias_term, int threads):
+cdef double predict_single(int* inds, double* vals, int lenn, double L1, double baL2, double ialpha, double beta,
+						   double* w, double* z, double* n, double* w_fm, double* z_fm, double* n_fm, double weight_fm,
+						   int D_fm, bint bias_term, int threads) nogil:
 	cdef int i, ii, k
 	cdef double sign, zi, d, wi, wi2, wfmk, e= 0.0, e2= 0.0
 
@@ -55,11 +53,9 @@ cdef double predict_single(int* inds, double* vals, int lenn,
 	e2= (e2- wi2)* 0.5 *weight_fm
 	return e+e2
 
-cdef void update_single(int* inds, double* vals, int lenn, double e,
-						double ialpha, double* w, double* z, double* n,
-						double alpha_fm, double L2_fm,
-						double* w_fm, double* z_fm, double* n_fm,
-					    int D_fm, bint bias_term, int threads) nogil:
+cdef void update_single(int* inds, double* vals, int lenn, double e, double ialpha, double* w, double* z, double* n,
+						double alpha_fm, double L2_fm, double* w_fm, double* z_fm, double* n_fm,
+						int D_fm, bint bias_term, int threads) nogil:
 	cdef int i, ii, k
 	cdef double g, g2, ni, v, lr, e2= e**2, reg, L2_fme= L2_fm / e
 	cdef double *z_fmi
@@ -108,24 +104,26 @@ cdef class FM_FTRL:
 	cdef double weight_fm
 	cdef double init_fm
 	cdef double e_noise
+	cdef double e_clip
 	cdef int inv_link
 	cdef bint bias_term
 	cdef int seed
 	cdef int verbose
 
 	def __init__(self,
-				 double alpha=0.1,
-				 double beta=1.0,
-				 double L1=1.0,
-				 double L2=1.0,
+				 double alpha=0.02,
+				 double beta=0.01,
+				 double L1=0.0001,
+				 double L2=0.1,
 				 unsigned int D=2**25,
-				 double alpha_fm=0.1,
-				 double L2_fm= 0.0,
+				 double alpha_fm=0.03,
+				 double L2_fm= 0.005,
 				 double init_fm= 0.01,
 				 unsigned int D_fm=20,
-				 double weight_fm= 1.0,
+				 double weight_fm= 10.0,
 				 double e_noise= 0.0001,
-				 unsigned int iters=1,
+				 double e_clip= 1.0,
+				 unsigned int iters=5,
 				 inv_link= "identity",
 				 bint bias_term=1,
 				 int threads= 0,
@@ -143,6 +141,7 @@ cdef class FM_FTRL:
 		self.D_fm= D_fm
 		self.weight_fm= weight_fm
 		self.e_noise= e_noise
+		self.e_clip= e_clip
 		self.iters= iters
 		if threads==0:  threads= multiprocessing.cpu_count()-1
 		self.threads= threads
@@ -160,8 +159,9 @@ cdef class FM_FTRL:
 		self.z = np.zeros((D), dtype=np.float64)
 		self.n = np.zeros((D), dtype=np.float64)
 		self.w_fm = np.zeros(D_fm, dtype=np.float64)
-		rand = np.random.RandomState(self.seed)
-		self.z_fm = (rand.rand(D * D_fm) - 0.5) * self.init_fm
+		rand= rnd.RandomState(seed= self.seed)
+		self.z_fm = (rand.random_sample(D * D_fm) - 0.5) * self.init_fm
+
 		self.n_fm = np.zeros(D, dtype=np.float64)
 
 	def predict(self, X, int threads= 0):
@@ -210,7 +210,7 @@ cdef class FM_FTRL:
 					np.ndarray[double, ndim=1, mode='c'] y, int threads, int seed):
 		cdef double ialpha= 1.0/self.alpha, L1= self.L1, beta= self.beta, baL2= beta * ialpha + self.L2, \
 					alpha_fm= self.alpha_fm, weight_fm= self.weight_fm, L2_fm= self.L2_fm, e, e_total= 0, zfmi, \
-					e_noise= self.e_noise
+					e_noise= self.e_noise, e_clip= self.e_clip, abs_e
 		cdef double *w= &self.w[0], *z= &self.z[0], *n= &self.n[0], *n_fm= &self.n_fm[0], \
 					*z_fm= &self.z_fm[0], *w_fm= &self.w_fm[0], *ys= <double*> y.data
 		cdef unsigned int D_fm= self.D_fm, i, lenn, ptr, row_count= X_indptr.shape[0]-1, row, inv_link= self.inv_link
@@ -218,7 +218,7 @@ cdef class FM_FTRL:
 		cdef int* inds, indptr
 		cdef double* vals
 
-		rand= np.random.RandomState(seed)
+		rand= rnd.RandomState(seed= self.seed)
 		for iter in range(self.iters):
 			e_total= 0.0
 			for row in range(row_count):
@@ -230,8 +230,12 @@ cdef class FM_FTRL:
 											L1, baL2, ialpha, beta, w, z, n,
 											w_fm, z_fm, n_fm, weight_fm,
 											D_fm, bias_term, threads), inv_link) -ys[row]
-				e_total+= fabs(e)
+				abs_e= fabs(e)
+				e_total+= abs_e
 				e += (rand.rand() - 0.5) * e_noise
+				if abs_e> e_clip:
+					if e>0:  e= e_clip
+					else:  e= -e_clip
 				update_single(inds, vals, lenn, e, ialpha, w, z, n, alpha_fm, L2_fm, w_fm, z_fm, n_fm, D_fm,
 							  bias_term, threads)
 			if self.verbose>0:  print "Total e:", e_total
@@ -244,13 +248,51 @@ cdef class FM_FTRL:
 		self.set_params(pkl.load(gzip.open(filename, 'rb')))
 
 	def __getstate__(self):
-		return (self.alpha, self.beta, self.L1, self.L2, self.alpha_fm, self.L2_fm, self.weight_fm, self.init_fm,
-				self.D, self.D_fm, self.iters,
-				np.asarray(self.w), np.asarray(self.z), np.asarray(self.n),
-				np.asarray(self.w_fm), np.asarray(self.z_fm), np.asarray(self.n_fm),
-				self.inv_link, self.seed, self.bias_term)
+		return (self.alpha,
+				self.beta,
+				self.L1,
+				self.L2,
+				self.alpha_fm,
+				self.L2_fm,
+				self.e_noise,
+				self.e_clip,
+				self.weight_fm,
+				self.init_fm,
+				self.D,
+				self.D_fm,
+				self.iters,
+				np.asarray(self.w),
+				np.asarray(self.z),
+				np.asarray(self.n),
+				np.asarray(self.w_fm),
+				np.asarray(self.z_fm),
+				np.asarray(self.n_fm),
+				self.inv_link,
+				self.seed,
+				self.bias_term,
+				self.verbose)
 
 	def __setstate__(self, params):
-		(self.alpha, self.beta, self.L1, self.L2, self.alpha_fm, self.L2_fm, self.weight_fm, self.init_fm,
-		 self.D, self.D_fm, self.iters, self.w, self.z, self.n, self.w_fm, self.z_fm, self.n_fm, self.inv_link,
-		 self.seed, self.bias_term)= params
+		(self.alpha,
+		 self.beta,
+		 self.L1,
+		 self.L2,
+		 self.alpha_fm,
+		 self.L2_fm,
+		 self.e_noise,
+		 self.e_clip,
+		 self.weight_fm,
+		 self.init_fm,
+		 self.D,
+		 self.D_fm,
+		 self.iters,
+		 self.w,
+		 self.z,
+		 self.n,
+		 self.w_fm,
+		 self.z_fm,
+		 self.n_fm,
+		 self.inv_link,
+		 self.seed,
+		 self.bias_term,
+		 self.verbose)= params

@@ -17,7 +17,7 @@ else:
 np.import_array()
 
 cdef double inv_link_f(double e, int inv_link) nogil:
-	if inv_link==1:  return 1.0 / (1.0 + exp(-fmax(fmin(e, 35.0), -35.0)))
+	if inv_link==1:  return 1.0 / (1.0 + exp(-fmax(fmin(e, 35.0), -35.0))) #Sigmoid + logloss
 	return e
 
 cdef double predict_single(int* inds, double* vals, int lenn, double L1, double baL2, double ialpha, double beta,
@@ -69,6 +69,7 @@ cdef class FTRL:
 	cdef double L2
 	cdef double alpha
 	cdef double beta
+	cdef double e_clip
 	cdef int inv_link
 	cdef bint bias_term
 	cdef int verbose
@@ -79,7 +80,8 @@ cdef class FTRL:
 				 double L1=1.0,
 				 double L2=1.0,
 				 unsigned int D=2**25,
-				 unsigned int iters=1,
+				 unsigned int iters=10,
+				 double e_clip= 1.0,
 				 int threads= 0,
 				 inv_link= "sigmoid",
 				 bint bias_term=1,
@@ -89,6 +91,7 @@ cdef class FTRL:
 		self.beta= beta
 		self.L1= L1
 		self.L2= L2
+		self.e_clip= e_clip
 		self.D= D
 		self.iters= iters
 		if threads==0:  threads= multiprocessing.cpu_count()-1
@@ -145,7 +148,8 @@ cdef class FTRL:
 	def fit_f(self, np.ndarray[double, ndim=1, mode='c'] X_data,
 					np.ndarray[int, ndim=1, mode='c'] X_indices,
 					np.ndarray[int, ndim=1, mode='c'] X_indptr, y, int threads):
-		cdef double ialpha= 1.0/self.alpha, L1= self.L1, beta= self.beta, baL2= beta * ialpha + self.L2, e, e_total= 0
+		cdef double ialpha= 1.0/self.alpha, L1= self.L1, beta= self.beta, baL2= beta * ialpha + self.L2, e, e_total= 0,\
+					e_clip= self.e_clip, abs_e
 		cdef double[:] w= self.w, z= self.z, n= self.n, ys= y
 		cdef unsigned int lenn, ptr, row_count= X_indptr.shape[0]-1, row, inv_link= self.inv_link, j=0, jj
 		cdef bint bias_term= self.bias_term
@@ -161,9 +165,13 @@ cdef class FTRL:
 				e= inv_link_f(
 				predict_single(inds, vals, lenn, L1, baL2, ialpha, beta, w, z, n, bias_term,
 														threads), inv_link)-ys[row]
+				abs_e= fabs(e)
+				e_total+= abs_e
+				if abs_e> e_clip:
+					if e>0:  e= e_clip
+					else:  e= -e_clip
 				update_single(inds, vals, lenn, e, ialpha, w, z, n, bias_term, threads)
-				e_total+= fabs(e)
-			if self.verbose > 0:  print "Total e:", e_total
+				if self.verbose > 0:  print "Total e:", e_total
 
 	def pickle_model(self, filename):
 		with gzip.open(filename, 'wb') as model_file:
@@ -173,8 +181,9 @@ cdef class FTRL:
 		self.set_params(pkl.load(gzip.open(filename, 'rb')))
 
 	def __getstate__(self):
-		return (self.alpha, self.beta, self.L1, self.L2, self.D, self.iters,
-				np.asarray(self.w), np.asarray(self.z), np.asarray(self.n), self.inv_link)
+		return (self.alpha, self.beta, self.L1, self.L2, self.e_clip, self.D, self.iters,
+				np.asarray(self.w), np.asarray(self.z), np.asarray(self.n), self.inv_link, self.verbose)
 
 	def __setstate__(self, params):
-		(self.alpha, self.beta, self.L1, self.L2, self.D, self.iters, self.w, self.z, self.n, self.inv_link)= params
+		(self.alpha, self.beta, self.L1, self.L2, self.e_clip, self.D,
+		 self.iters, self.w, self.z, self.n, self.inv_link, self.verbose)= params

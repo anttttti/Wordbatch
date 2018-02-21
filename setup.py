@@ -10,7 +10,7 @@ else:
     fopenmp_arg = "-fopenmp"
 setup(
     name='Wordbatch',
-    version='1.3.1',
+    version='1.3.2',
     description='Parallel text feature extraction for machine learning',
     url='https://github.com/anttttti/Wordbatch',
     author='Antti Puurula',
@@ -32,7 +32,7 @@ setup(
         "Topic :: Scientific/Engineering :: Artificial Intelligence",
         "Topic :: Software Development :: Libraries :: Python Modules",
     ],
-    install_requires=['cython', 'scikit-learn', 'python-Levenshtein', 'py-lz4framed'], 
+    install_requires=['cython', 'scikit-learn', 'python-Levenshtein', 'py-lz4framed', 'randomstate'], 
     extras_require={'dev': ['nltk', 'textblob', 'keras', 'pandas', 'pyspark']},
     
         
