@@ -171,7 +171,7 @@ cdef class FTRL:
 					if e>0:  e= e_clip
 					else:  e= -e_clip
 				update_single(inds, vals, lenn, e, ialpha, w, z, n, bias_term, threads)
-				if self.verbose > 0:  print "Total e:", e_total
+			if self.verbose > 0:  print "Total e:", e_total
 
 	def pickle_model(self, filename):
 		with gzip.open(filename, 'wb') as model_file:
