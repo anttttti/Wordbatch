@@ -134,7 +134,7 @@ cdef class FTRL:
 		return p
 
 	def partial_fit(self, X, y, int threads = 0):
-		return self.fit(X, y, threads = 0, reset= False)
+		return self.fit(X, y, threads = threads, reset= False)
 
 	def fit(self, X, y, int threads= 0, reset= True):
 		if reset:  self.reset()

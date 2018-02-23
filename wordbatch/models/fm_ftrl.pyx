@@ -195,7 +195,7 @@ cdef class FM_FTRL:
 
 
 	def partial_fit(self, X, y, int threads = 0, int seed = 0):
-		return self.fit(X, y, threads = 0, seed = 0, reset= False)
+		return self.fit(X, y, threads = threads, seed = seed, reset= False)
 
 	def fit(self, X, y, int threads= 0, int seed= 0, reset= True):
 		if reset:  self.reset()
@@ -218,7 +218,7 @@ cdef class FM_FTRL:
 		cdef int* inds, indptr
 		cdef double* vals
 
-		rand= rnd.RandomState(seed= self.seed)
+		rand= rnd.RandomState(seed= seed)
 		for iter in range(self.iters):
 			e_total= 0.0
 			for row in range(row_count):

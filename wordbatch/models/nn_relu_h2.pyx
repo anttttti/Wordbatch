@@ -165,7 +165,7 @@ cdef class NN_ReLU_H2:
 		return p
 
 	def partial_fit(self, X, y, int threads = 0, int seed = 0):
-		return self.fit(X, y, threads=0, seed=0, reset=False)
+		return self.fit(X, y, threads=threads, seed=seed, reset=False)
 
 	def fit(self, X, y, int threads= 0, int seed= 0, reset=True):
 		if reset:  self.reset()
@@ -186,7 +186,7 @@ cdef class NN_ReLU_H2:
 							row, inv_link= self.inv_link, j=0, jj
 		cdef int* inds, indptr
 		cdef double* vals
-		rand = rnd.RandomState(seed=self.seed)
+		rand = rnd.RandomState(seed=seed)
 
 		for iter in range(self.iters):
 			e_total= 0.0

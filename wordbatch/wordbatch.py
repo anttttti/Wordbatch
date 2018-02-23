@@ -14,7 +14,7 @@ import os
 import sys
 import wordbatch.batcher as batcher
 
-WB_DOC_CNT= u'###DOC_CNT###'
+WB_DOC_CNT= u'###DOC_CNT###' #Used for Spark document counting across RDFs
 
 def batch_get_dfs(args):
     dft= Counter()
