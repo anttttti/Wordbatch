@@ -100,8 +100,8 @@ class WordseqRegressor():
         del(texts)
         texts= sp.vstack(texts2)
         self.wb.dictionary_freeze = True
-        test= [texts[-1000:], labels[-1000:]]
-        train = [texts[:-1000], labels[:-1000]]
+        test= (np.array(texts[-1000:]), np.array(labels[-1000:]))
+        train = (np.array(texts[:-1000]), np.array(labels[:-1000]))
 
         self.model.fit(train[0], train[1], batch_size=2048, epochs=2, validation_data=(test[0], test[1]))
         if pickle_model != "":
@@ -109,5 +109,5 @@ class WordseqRegressor():
             with gzip.open(pickle_model + ".wb", 'wb') as model_file:  pkl.dump(self.wb, model_file, protocol=2)
 
     def predict_batch(self, texts):
-        results= [x[0] for x in self.model.predict(self.wb.transform(texts))]
+        results= [x[0] for x in self.model.predict(np.array(self.wb.transform(texts)))]
         return results

@@ -14,7 +14,7 @@ if __name__ == "__main__":
     start_time= time.time()
     print(datetime.datetime.now())
 
-    df= pd.DataFrame.from_csv("../data/Tweets.csv", encoding="ISO-8859-1")
+    df= pd.DataFrame.from_csv("../data/Tweets.csv", encoding="utf8")
     def sentiment_to_label(sentiment):
         if sentiment=="neutral":  return 0
         if sentiment=="negative":  return -1
@@ -59,7 +59,6 @@ if __name__ == "__main__":
     #wv_regressor= wordvec_regressor.WordvecRegressor("../models/wordvec_model.pkl.gz")
     df['wordvec_score'] = wv_regressor.predict(df['text'].values)
 
-    print(df['wordvec_score'])
     df['tweet_len']= df['text'].map(lambda x: log(1+len(x)))
     df['tweet_wordcount']= df['text'].map(lambda x: log(1+len(x.split())))
 

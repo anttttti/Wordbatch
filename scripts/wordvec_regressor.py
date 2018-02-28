@@ -32,9 +32,9 @@ class WordvecRegressor(object):
         self.wb= wordbatch.WordBatch(normalize_text,
                                             extractor=(Hstack,
                                    [(WordVec, {"wordvec_file": "../../../data/word2vec/glove.twitter.27B.100d.txt.gz",
-                                    "normalize_text": normalize_text, "encoding": "ISO-8859-1"}),
+                                    "normalize_text": normalize_text, "encoding": "utf8"}),
                                    (WordVec, {"wordvec_file": "../../../data/word2vec/glove.6B.50d.txt.gz",
-                                 "normalize_text": normalize_text, "encoding": "ISO-8859-1"})]))
+                                 "normalize_text": normalize_text, "encoding": "utf8"})]))
 
         self.wb.dictionary_freeze= True
 

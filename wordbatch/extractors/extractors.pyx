@@ -267,7 +267,7 @@ class WordVec:
 		fea_cfg.setdefault("verbose", 0)
 		fea_cfg.setdefault("merge_vectors", "mean")
 		fea_cfg.setdefault("normalize_merged", "L2")
-		fea_cfg.setdefault("encoding", "ISO-8859-1")
+		fea_cfg.setdefault("encoding", "utf8")
 		for key, value in fea_cfg.items():  setattr(self, key, value)
 		self.w2v= self.load_w2v(fea_cfg["wordvec_file"], fea_cfg['encoding'])
 		self.w2v_dim= len(list(self.w2v.values())[0])
@@ -277,7 +277,7 @@ class WordVec:
 		from collections import Counter
 		w2v_counts= Counter()
 		opn= gzip.open if w2v_file.endswith(".gz") else open
-		for line in opn(w2v_file):
+		for line in opn(w2v_file, 'rb'):
 			line= line.decode(encoding).strip().split(" ", 1)
 			vec= np.array([np.float64(x) for x in line[1].split(" ")])
 			if len(vec)<2: continue
