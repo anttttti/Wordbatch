@@ -215,10 +215,12 @@ class WordBatch(object):
     def process(self, texts, input_split= False, reset= True, update= True):
         if reset:  self.reset()
         if self.freeze:  update= False
-        if self.verbose > 0:  print("Normalize text")
+
         if self.normalize_text != None:
+            if self.verbose > 0:  print("Normalize text")
             texts= self.normalize_texts(texts, input_split= input_split, merge_output= False)
             input_split= True
+
         if self.spellcor_count> 0 or self.stemmer!=None:
             if self.verbose > 0:  print("Update raw dfts")
             if update:  self.update_dictionary(texts, self.raw_dft, None, self.raw_min_df, input_split= input_split)
@@ -226,8 +228,10 @@ class WordBatch(object):
             texts= self.normalize_wordforms(texts, input_split= input_split, merge_output= False)
             input_split= True
             if self.preserve_raw_dft==False:  self.raw_dft= Counter()
+
         if update:
             self.update_dictionary(texts, self.dft, self.dictionary, self.min_df, input_split= input_split)
+
         if self.verbose> 2: print("len(self.raw_dft):", len(self.raw_dft), "len(self.dft):", len(self.dft))
         return texts
 

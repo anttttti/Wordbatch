@@ -172,7 +172,7 @@ cdef class NN_ReLU_H2:
 		if threads == 0:  threads= self.threads
 		if type(X) != ssp.csr.csr_matrix:  X = ssp.csr_matrix(X, dtype=np.float64)
 		if type(y) != np.array:  y = np.array(y, dtype=np.float64)
-		self.fit_f(X.data, X.indices, X.indptr, y, threads, seed)
+		return self.fit_f(X.data, X.indices, X.indptr, y, threads, seed)
 
 	def fit_f(self, np.ndarray[double, ndim=1, mode='c'] X_data,
 					np.ndarray[int, ndim=1, mode='c'] X_indices,
@@ -205,6 +205,7 @@ cdef class NN_ReLU_H2:
 					else:  e= -e_clip
 				update_single(inds, vals, lenn, D, D_nn, D_nn2, e, alpha, L2, w0, w1, w2, z1, z2, c0, c1, c2, threads)
 			if self.verbose > 0:  print "Total e:", e_total
+		return self
 
 	def predict_layer(self, X, int layer, int threads= 0):
 		if threads==0:  threads= self.threads

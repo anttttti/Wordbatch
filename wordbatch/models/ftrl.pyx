@@ -143,7 +143,7 @@ cdef class FTRL:
 		if type(y) != np.array:  y = np.array(y, dtype=np.float64)
 		# self.fit_f(X, np.ascontiguousarray(X.data), np.ascontiguousarray(X.indices),
 		#           np.ascontiguousarray(X.indptr), y, threads)
-		self.fit_f(X.data, X.indices, X.indptr, y, threads)
+		return self.fit_f(X.data, X.indices, X.indptr, y, threads)
 
 	def fit_f(self, np.ndarray[double, ndim=1, mode='c'] X_data,
 					np.ndarray[int, ndim=1, mode='c'] X_indices,
@@ -172,6 +172,7 @@ cdef class FTRL:
 					else:  e= -e_clip
 				update_single(inds, vals, lenn, e, ialpha, w, z, n, bias_term, threads)
 			if self.verbose > 0:  print "Total e:", e_total
+		return self
 
 	def pickle_model(self, filename):
 		with gzip.open(filename, 'wb') as model_file:

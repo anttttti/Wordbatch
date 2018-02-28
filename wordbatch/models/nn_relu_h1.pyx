@@ -151,7 +151,7 @@ cdef class NN_ReLU_H1:
 		if type(y) != np.array:  y = np.array(y, dtype=np.float64)
 		# self.fit_f(X, np.ascontiguousarray(X.data), np.ascontiguousarray(X.indices),
 		#           np.ascontiguousarray(X.indptr), y, threads)
-		self.fit_f(X.data, X.indices, X.indptr, y, threads, seed)
+		return self.fit_f(X.data, X.indices, X.indptr, y, threads, seed)
 
 	def fit_f(self, np.ndarray[double, ndim=1, mode='c'] X_data,
 					np.ndarray[int, ndim=1, mode='c'] X_indices,
@@ -182,6 +182,7 @@ cdef class NN_ReLU_H1:
 					else:  e= -e_clip
 				update_single(inds, vals, lenn, D, D_nn, e, alpha, L2, w0, w1, z, c0, c1, threads)
 			if self.verbose > 0:  print "Total e:", e_total
+		return self
 
 	def predict_layer(self, X, int layer, int threads= 0):
 		if threads==0:  threads= self.threads

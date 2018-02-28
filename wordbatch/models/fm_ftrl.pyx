@@ -194,20 +194,24 @@ cdef class FM_FTRL:
 		return p
 
 
-	def partial_fit(self, X, y, int threads = 0, int seed = 0):
-		return self.fit(X, y, threads = threads, seed = seed, reset= False)
+	def partial_fit(self, X, y, sample_weight= None, int threads = 0, int seed = 0):
+		return self.fit(X, y, sample_weight= sample_weight, threads = threads, seed = seed, reset= False)
 
-	def fit(self, X, y, int threads= 0, int seed= 0, reset= True):
+	def fit(self, X, y, sample_weight= None, int threads= 0, int seed= 0, reset= True):
 		if reset:  self.reset()
 		if threads == 0:  threads= self.threads
 		if type(X) != ssp.csr.csr_matrix:  X = ssp.csr_matrix(X, dtype=np.float64)
 		if type(y) != np.array:  y = np.array(y, dtype=np.float64)
-		return self.fit_f(X.data, X.indices, X.indptr, y, threads, seed)
+		if sample_weight is not None and type(sample_weight) != np.array:
+			sample_weight= np.array(sample_weight, dtype=np.float64)
+		return self.fit_f(X.data, X.indices, X.indptr, y, sample_weight, threads, seed)
 
 	def fit_f(self, np.ndarray[double, ndim=1, mode='c'] X_data,
 					np.ndarray[int, ndim=1, mode='c'] X_indices,
 					np.ndarray[int, ndim=1, mode='c'] X_indptr,
-					np.ndarray[double, ndim=1, mode='c'] y, int threads, int seed):
+					np.ndarray[double, ndim=1, mode='c'] y,
+					sample_weight,
+					int threads, int seed):
 		cdef double ialpha= 1.0/self.alpha, L1= self.L1, beta= self.beta, baL2= beta * ialpha + self.L2, \
 					alpha_fm= self.alpha_fm, weight_fm= self.weight_fm, L2_fm= self.L2_fm, e, e_total= 0, zfmi, \
 					e_noise= self.e_noise, e_clip= self.e_clip, abs_e
@@ -236,9 +240,12 @@ cdef class FM_FTRL:
 				if abs_e> e_clip:
 					if e>0:  e= e_clip
 					else:  e= -e_clip
+				if sample_weight is not None:
+					e*= sample_weight[row]
 				update_single(inds, vals, lenn, e, ialpha, w, z, n, alpha_fm, L2_fm, w_fm, z_fm, n_fm, D_fm,
 							  bias_term, threads)
 			if self.verbose>0:  print "Total e:", e_total
+		return self
 
 	def pickle_model(self, filename):
 		with gzip.open(filename, 'wb') as model_file:
