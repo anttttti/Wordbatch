@@ -1,5 +1,5 @@
 #!python
-#cython: boundscheck=False, infer_types=True, wraparound=False
+#cython: boundscheck=False, infer_types=True, wraparound=False, cdivision=True
 from __future__ import with_statement
 from __future__ import division
 from __future__ import absolute_import
@@ -23,7 +23,7 @@ else:
 from cpython cimport array
 cimport cython
 from libc.stdlib cimport abs
-from libc.math cimport log
+from libc.math cimport log, fabs
 cimport numpy as np
 
 np.import_array()
@@ -94,7 +94,7 @@ class WordBag:
 		fea_cfg.setdefault("hash_polys_maxdf", 0.5)
 		fea_cfg.setdefault("hash_polys_weight", 0.1)
 		fea_cfg.setdefault("seed", 0)
-		for key, value in fea_cfg.items():  setattr(self, key, value)
+		for key, value in fea_cfg.items():  setattr(self, key.lower(), value)
 		if self.hash_ngrams_weights==None: self.hash_ngrams_weights= [1.0 for x in range(self.hash_ngrams)]
 
 	def transform_single(self, text):
@@ -116,21 +116,21 @@ class WordBag:
 
 		text= text.split(" ")
 		cdef TextRow textrow= TextRow()
-		for x from 0 <= x < len(text):
+		for x in range(len(text)):
 			word= text[x]
 			if len(dictionary)!=0:
 				word_id = dictionary.get(word, -1)
 				if word_id == -1:  continue
 			df= wb.dft.get(word, 0)
 			if use_idf:
-				if df == 0: continue
+				if df == 0:  continue
 				idf= log(max(1.0, idf_lift + doc_count / df)) * norm_idf
 				#print(word, idf, df, log(max(1.0, idf_lift + doc_count / df)), norm_idf)
 				if idf== 0.0:  continue
 
 			if fc_hash_ngrams==0:  textrow.append(word_id, 1, idf)
 
-			for y from 0 <= y < min(fc_hash_ngrams, x+1):
+			for y in range(min(fc_hash_ngrams, x+1)):
 				hashed= murmurhash3_bytes_s32((" ".join(text[x-y:x+1])).encode("utf-8"), seed)
 				weight= fc_hash_ngrams_weights[y]
 				if weight < 0: weight*= -idf
@@ -140,7 +140,7 @@ class WordBag:
 				if doc_count!=0:
 					if df< fc_hash_polys_mindf or float(df)/wb.doc_count> fc_hash_polys_maxdf:  continue
 				#for y from max(1, fc_hash_ngrams) <= y < min(fc_hash_polys_window, x+1):
-				for y from 1 <= y < min(fc_hash_polys_window, x+1):
+				for y in range(1, min(fc_hash_polys_window, x+1)):
 					word2= text[x-y]
 					if doc_count!=0:
 						df2= wb.dft[word2]
@@ -149,7 +149,7 @@ class WordBag:
 						else murmurhash3_bytes_s32((word2+"#"+word).encode("utf-8"), seed)
 					weight= fc_hash_polys_weight
 					#if weight<0.0: weight= np.abs(weight) * 1.0/np.log(1+y)
-					if weight < 0.0: weight= np.abs(weight) * 1.0 / log(1 + y)
+					if weight < 0.0: weight= fabs(weight) * 1.0 / log(1 + y)
 					#print word, word2, df, df2, x, y, abs(hashed) % fc_hash_size, (hashed >= 0) * 2 - 1, weight
 					textrow.append(abs(hashed) % fc_hash_size, (hashed >= 0) * 2 - 1, weight)
 
@@ -170,7 +170,7 @@ class WordBag:
 		cdef int [:] indices_view= wordbag.indices
 		cdef double [:] data_view= wordbag.data
 
-		for x from 0 <= x < size: data_view[x]*= fea_weights[indices_view[x]]
+		for x in range(size): data_view[x]*= fea_weights[indices_view[x]]
 
 		if fc_norm== 'l0':  norm= size
 		elif fc_norm== 'l1':  norm= np.sum(np.abs(data_view))
@@ -220,7 +220,7 @@ class WordSeq:
 		fea_cfg.setdefault("remove_oovs", False)
 		fea_cfg.setdefault("pad_id", 0)
 		fea_cfg.setdefault("oov_id", wb.n_words+1)
-		for key, value in fea_cfg.items():  setattr(self, key, value)
+		for key, value in fea_cfg.items():  setattr(self, key.lower(), value)
 
 	def transform_single(self, text):
 		wb= self.wb
@@ -266,9 +266,9 @@ class WordVec:
 		fea_cfg.setdefault("normalize_dict", False)
 		fea_cfg.setdefault("verbose", 0)
 		fea_cfg.setdefault("merge_vectors", "mean")
-		fea_cfg.setdefault("normalize_merged", "L2")
+		fea_cfg.setdefault("normalize_merged", "l2")
 		fea_cfg.setdefault("encoding", "utf8")
-		for key, value in fea_cfg.items():  setattr(self, key, value)
+		for key, value in fea_cfg.items():  setattr(self, key.lower(), value)
 		self.w2v= self.load_w2v(fea_cfg["wordvec_file"], fea_cfg['encoding'])
 		self.w2v_dim= len(list(self.w2v.values())[0])
 
@@ -294,7 +294,7 @@ class WordVec:
 				else:  w2v[word]= vec
 		if self.normalize_dict!=False:
 			for word in w2v:
-				if self.normalize_dict=="L1":
+				if self.normalize_dict=="l1":
 					norm= sum(np.abs(w2v[word]))
 				else:
 					norm = np.sqrt(sum(w2v[word] **2))
@@ -313,8 +313,8 @@ class WordVec:
 		if self.merge_vectors!=None: #Merge word vectors to a per-document vector
 			if self.merge_vectors=="mean": #Currently only mean vector suppported, could do max, median, etc.
 				vec= np.mean(vecs, axis=0)
-			if self.normalize_merged!=None: #L1 and L2 normalization supported
-				if self.normalize_merged == "L1":
+			if self.normalize_merged!=None: #l1 and l2 normalization supported
+				if self.normalize_merged == "l1":
 					norm = sum(np.abs(vec))
 				else:
 					norm = np.sqrt(sum(vec ** 2))

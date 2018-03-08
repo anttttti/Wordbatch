@@ -18,6 +18,15 @@ else:
 
 np.import_array()
 
+cdef extern from "avx_ext.h":# nogil:
+	void update_fm_ftrl_avx(const int* inds, double* vals, int lenn, const double e, double ialpha, double* w,
+							double* z, double* n, double alpha_fm, const double L2_fm, double* w_fm, double* z_fm,
+							double* n_fm, int D_fm, int bias_term, int nThreads);
+	double predict_fm_ftrl_avx(const int* inds, double* vals, int lenn, double L1, double baL2, double ialpha,
+							   double beta, double* w, double* z, double* n, double* w_fm, double* z_fm, double* n_fm,
+							   double weight_fm, int D_fm, int bias_term, int nThreads);
+
+
 cdef double inv_link_f(double e, int inv_link) nogil:
 	if inv_link==1:  return 1.0 / (1.0 + exp(-fmax(fmin(e, 35.0), -35.0))) #Sigmoid + logloss
 	return e
@@ -107,12 +116,13 @@ cdef class FM_FTRL:
 	cdef double e_clip
 	cdef int inv_link
 	cdef bint bias_term
+	cdef int use_avx
 	cdef int seed
 	cdef int verbose
 
 	def __init__(self,
 				 double alpha=0.02,
-				 double beta=0.01,
+				 double beta=0.01, # ~ alpha/2
 				 double L1=0.0001,
 				 double L2=0.1,
 				 unsigned int D=2**25,
@@ -127,6 +137,7 @@ cdef class FM_FTRL:
 				 inv_link= "identity",
 				 bint bias_term=1,
 				 int threads= 0,
+				 int use_avx=1,
 				 int seed= 0,
 				 int verbose=1):
 
@@ -148,6 +159,7 @@ cdef class FM_FTRL:
 		if inv_link=="sigmoid":  self.inv_link= 1
 		if inv_link=="identity":  self.inv_link= 0
 		self.bias_term= bias_term
+		self.use_avx = use_avx
 		self.seed = seed
 		self.verbose= verbose
 		self.reset()
@@ -161,7 +173,6 @@ cdef class FM_FTRL:
 		self.w_fm = np.zeros(D_fm, dtype=np.float64)
 		rand= rnd.RandomState(seed= self.seed)
 		self.z_fm = (rand.random_sample(D * D_fm) - 0.5) * self.init_fm
-
 		self.n_fm = np.zeros(D, dtype=np.float64)
 
 	def predict(self, X, int threads= 0):
@@ -187,10 +198,17 @@ cdef class FM_FTRL:
 			lenn= X_indptr[row + 1] - ptr
 			inds= <int*> X_indices.data + ptr
 			vals= <double*> X_data.data + ptr
-			pp[row]= inv_link_f(predict_single(inds, vals, lenn,
-											   L1, baL2, ialpha, beta, w, z, n,
-											   w_fm, z_fm, n_fm, weight_fm,
-											   D_fm, bias_term, threads), self.inv_link)
+
+			if self.use_avx == 1:
+				pp[row]= inv_link_f(predict_fm_ftrl_avx(inds, vals, lenn,
+												   L1, baL2, ialpha, beta, w, z, n,
+												   w_fm, z_fm, n_fm, weight_fm,
+												   D_fm, bias_term, threads), self.inv_link)
+			else:
+				pp[row]= inv_link_f(predict_single(inds, vals, lenn,
+												   L1, baL2, ialpha, beta, w, z, n,
+												   w_fm, z_fm, n_fm, weight_fm,
+												   D_fm, bias_term, threads), self.inv_link)
 		return p
 
 
@@ -201,7 +219,9 @@ cdef class FM_FTRL:
 		if reset:  self.reset()
 		if threads == 0:  threads= self.threads
 		if type(X) != ssp.csr.csr_matrix:  X = ssp.csr_matrix(X, dtype=np.float64)
-		if type(y) != np.array:  y = np.array(y, dtype=np.float64)
+		#if type(y) != np.array:  y = np.array(y, dtype=np.float64)
+		y= np.ascontiguousarray(y, dtype=np.float64)
+
 		if sample_weight is not None and type(sample_weight) != np.array:
 			sample_weight= np.array(sample_weight, dtype=np.float64)
 		return self.fit_f(X.data, X.indices, X.indptr, y, sample_weight, threads, seed)
@@ -217,7 +237,7 @@ cdef class FM_FTRL:
 					e_noise= self.e_noise, e_clip= self.e_clip, abs_e
 		cdef double *w= &self.w[0], *z= &self.z[0], *n= &self.n[0], *n_fm= &self.n_fm[0], \
 					*z_fm= &self.z_fm[0], *w_fm= &self.w_fm[0], *ys= <double*> y.data
-		cdef unsigned int D_fm= self.D_fm, i, lenn, ptr, row_count= X_indptr.shape[0]-1, row, inv_link= self.inv_link
+		cdef unsigned int D_fm= self.D_fm, lenn, ptr, row_count= X_indptr.shape[0]-1, row, inv_link= self.inv_link
 		cdef bint bias_term= self.bias_term
 		cdef int* inds, indptr
 		cdef double* vals
@@ -230,10 +250,18 @@ cdef class FM_FTRL:
 				lenn= X_indptr[row+1]-ptr
 				inds= <int*> X_indices.data+ptr
 				vals= <double*> X_data.data+ptr
-				e= inv_link_f(predict_single(inds, vals, lenn,
-											L1, baL2, ialpha, beta, w, z, n,
-											w_fm, z_fm, n_fm, weight_fm,
-											D_fm, bias_term, threads), inv_link) -ys[row]
+
+				if self.use_avx == 1:
+					e = inv_link_f(predict_fm_ftrl_avx(inds, vals, lenn,
+													   L1, baL2, ialpha, beta, w, z, n,
+													   w_fm, z_fm, n_fm, weight_fm,
+													   D_fm, bias_term, threads), inv_link) - ys[row]
+				else:
+					e= inv_link_f(predict_single(inds, vals, lenn,
+												L1, baL2, ialpha, beta, w, z, n,
+												w_fm, z_fm, n_fm, weight_fm,
+												D_fm, bias_term, threads), inv_link) -ys[row]
+
 				abs_e= fabs(e)
 				e_total+= abs_e
 				e += (rand.rand() - 0.5) * e_noise
@@ -242,8 +270,14 @@ cdef class FM_FTRL:
 					else:  e= -e_clip
 				if sample_weight is not None:
 					e*= sample_weight[row]
-				update_single(inds, vals, lenn, e, ialpha, w, z, n, alpha_fm, L2_fm, w_fm, z_fm, n_fm, D_fm,
-							  bias_term, threads)
+
+				if self.use_avx == 1:
+					update_fm_ftrl_avx(inds, vals, lenn, e, ialpha, w, z, n, alpha_fm, L2_fm, w_fm, z_fm, n_fm, D_fm,
+										 bias_term, threads)
+				else:
+					update_single(inds, vals, lenn, e, ialpha, w, z, n, alpha_fm, L2_fm, w_fm, z_fm, n_fm, D_fm,
+								  bias_term, threads)
+
 			if self.verbose>0:  print "Total e:", e_total
 		return self
 
@@ -276,6 +310,7 @@ cdef class FM_FTRL:
 				np.asarray(self.n_fm),
 				self.inv_link,
 				self.seed,
+				self.use_avx,
 				self.bias_term,
 				self.verbose)
 
@@ -301,5 +336,6 @@ cdef class FM_FTRL:
 		 self.n_fm,
 		 self.inv_link,
 		 self.seed,
+		 self.use_avx,
 		 self.bias_term,
 		 self.verbose)= params
