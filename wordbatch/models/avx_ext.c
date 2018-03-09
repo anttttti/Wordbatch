@@ -134,11 +134,10 @@ void update_fm_ftrl_avx(const int* inds, double* vals, int lenn, const double e,
     }
     const double L2_fme = L2_fm / e;
 
-    int ii;
     #ifdef USE_OMP
     #pragma omp parallel for num_threads(num_thread)
     #endif
-    for (ii = 0; ii < lenn; ii++) {
+    for (int ii = 0; ii < lenn; ii++) {
         const int i = inds[ii];
         const double v = vals[ii];
         const double g = e * v;

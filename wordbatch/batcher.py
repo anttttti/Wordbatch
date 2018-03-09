@@ -77,6 +77,7 @@ class Batcher(object):
 
     def merge_batches(self, data):
         if isinstance(data[0], ssp.csr_matrix):  return ssp.vstack(data)
+        if isinstance(data[0], pd.DataFrame): return pd.concat(data)
         return [item for sublist in data for item in sublist]
 
     def parallelize_batches(self, task, data, args, method=None, timeout=-1, rdd_col= 1, input_split=False,
