@@ -30,6 +30,35 @@ copy_reg.pickle(types.MethodType, _pickle_method)
 #    return eval(args[1]+"."+args[2]+'('+args[0]+')')
 
 class Batcher(object):
+    """Batch Handler to handle parallel jobs on batches
+
+    Parameters
+    ----------
+    procs: int
+        Number of process(es)/thread(s) to use to execute task in parallel
+
+    minibatch_size: int
+        Expected size of each mini-batch to individually perform task on.
+
+    timeout: int | float
+        Maximum time(seconds) to wait until the jobs finish or until a timeout occurs.
+
+    use_sc: boolean
+
+    method: {'serial', 'multiprocessing', 'threading'}
+        Method to apply task to the batches
+
+            - 'serial' will apply task sequentially to the batches in a single process/thread
+              without additional parallelism.
+
+            - 'multiprocessing' will apply task to batches in parallel using multiple processes.
+
+            - 'threading' will apply task to batches in parallel using multiple threads.
+
+    verbose: int
+        Verbosity level. Setting verbose > 0 will display additional information while handling
+        batches depending on the specific level set.
+    """
     def __init__(self, procs= 0, minibatch_size= 20000, timeout= 600, use_sc= False, method= "multiprocessing",
                  verbose= 1):
         if procs==0:  procs= multiprocessing.cpu_count()
@@ -63,6 +92,22 @@ class Batcher(object):
         return texts, labels
 
     def split_batches(self, data, minibatch_size= None):
+        """Split data into mini-batches with a specified size
+
+        Parameters
+        ----------
+        data: iterable and indexable
+            List-like data to be split into batches.
+
+        minibatch_size: int
+            Expected size of a mini-batch to split out from the data parameter.
+
+        Returns
+        -------
+        data_split: list
+            List of batches, each entry is a list-like object representing
+            the data subset in a batch.
+        """
         if minibatch_size==None: minibatch_size= self.minibatch_size
         data_type= type(data)
         if data_type is list or data_type is tuple:  len_data= len(data)
@@ -76,12 +121,74 @@ class Batcher(object):
         return data_split
 
     def merge_batches(self, data):
+        """Merge a list of data batches into one single instance representing the data
+
+        Parameters
+        ----------
+        data: list
+            List of batches to merge
+
+        Returns
+        -------
+        (anonymous): sparse matrix | pd.DataFrame | list
+            Single complete list-like data merged from given batches
+        """
         if isinstance(data[0], ssp.csr_matrix):  return ssp.vstack(data)
         if isinstance(data[0], pd.DataFrame): return pd.concat(data)
         return [item for sublist in data for item in sublist]
 
     def parallelize_batches(self, task, data, args, method=None, timeout=-1, rdd_col= 1, input_split=False,
                             merge_output= True, minibatch_size= None, procs=None):
+        """
+
+        Parameters
+        ----------
+        task: function
+            Function to apply on each mini-batch with other specified arguments
+
+        data: list-like
+            Samples to split into mini-batches and apply the specified function on
+
+        args: list
+            Arguments to pass to the specified function following the mini-batch
+
+        method: {'serial', 'multiprocessing', 'threading'}
+            Method to apply task to the batches
+
+            - 'serial' will apply task sequentially to the batches in a single process/thread
+              without additional parallelism.
+
+            - 'multiprocessing' will apply task to batches in parallel using multiple processes.
+
+            - 'threading' will apply task to batches in parallel using multiple threads.
+
+        timeout: int | float
+            Maximum time(seconds) to wait until the jobs finish or until a timeout occurs.
+
+        rdd_col:
+
+        input_split: boolean, default False
+            If True, data will be splitted into single samples before applying task in parellel, otherwise
+            data will just be splitted into batches with specified size.
+
+        merge_output: boolean, default True
+            If True, results from batches will be merged into one single instance before return.
+
+        minibatch_size: int
+            Expected size of each mini-batch to individually perform task on. The actual sizes will be
+            the same as the specified value except the last mini-batch, whose size might be exactly the same
+            as this value or smaller.
+
+        procs: int
+            Number of process(es)/thread(s) to use to execute task in parallel
+
+        Returns
+        -------
+        results: list-like | list of list-like
+            If merge_output is specified as True, this will be a list-like object representing
+            the dataset, with each entry as a sample. Otherwise this will be a list of list-like
+            objects, with each entry representing the results from a mini-batch
+        """
         if procs==None: procs= self.procs
         if method == None: method= self.method
         if self.verbose > 1:
@@ -140,6 +247,28 @@ class Batcher(object):
         return results
 
     def shuffle_batch(self, texts, labels= None, seed= None):
+        """Shuffle a list of samples, as well as the labels if specified
+
+        Parameters
+        ----------
+        texts: list-like
+            List of samples to shuffle
+
+        labels: list-like (optional)
+            List of labels to shuffle, should be correspondent to the samples given
+
+        seed: int
+            The seed of the pseudo random number generator to use for shuffling
+
+        Returns
+        -------
+        texts: list
+            List of shuffled samples (texts parameters)
+
+        labels: list (optional)
+            List of shuffled labels. This will only be returned when non-None
+            labels is passed
+        """
         if seed!=None:  random.seed(seed)
         index_shuf= list(range(len(texts)))
         random.shuffle(index_shuf)
