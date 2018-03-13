@@ -23,13 +23,14 @@ double predict_fm_ftrl_avx(const int* inds, double* vals, int lenn, double L1, d
     double e = 0.0;
     double e2 = 0.0;
     if (bias_term) e += *w = -*z / ((beta + sqrt(*n)) * ialpha);
+    int k, ii;
 
     /*
     #ifdef USE_OMP
     #pragma omp parallel for
     #endif
     */
-    for (int ii = 0; ii < lenn; ii++) {
+    for (ii = 0; ii < lenn; ii++) {
         const int i = inds[ii];
         const double zi = z[i];
         const double sign = (zi < 0) ? -1.0 : 1.0;
@@ -48,22 +49,22 @@ double predict_fm_ftrl_avx(const int* inds, double* vals, int lenn, double L1, d
 
     double* acwfmk = (double*)malloc(sizeof(double) * D_fm * num_thread);
     #ifdef USE_OMP
-    #pragma omp parallel for num_threads(num_thread)
+    #pragma omp parallel for num_threads(n_threads) private(k)
     #endif
-    for (int k = 0; k < D_fm * num_thread; k++) acwfmk[k] = 0.0;
+    for (k = 0; k < D_fm * num_thread; k++) acwfmk[k] = 0.0;
 
     double* wi2_acc = (double*)malloc(sizeof(double) * num_thread * 4);
 
     double wi2 = 0.0;
     #ifdef USE_OMP
-    #pragma omp parallel for num_threads(num_thread)
+    #pragma omp parallel for num_threads(num_thread) private(k)
     #endif
-    for (int k = 0; k < num_thread * 4; k++) wi2_acc[k] = 0.0;
+    for (k = 0; k < num_thread * 4; k++) wi2_acc[k] = 0.0;
 
     #ifdef USE_OMP
-    #pragma omp parallel for num_threads(num_thread)
+    #pragma omp parallel for num_threads(num_thread) private(ii)
     #endif
-    for (int ii = 0; ii < lenn; ii++) {
+    for (ii = 0; ii < lenn; ii++) {
 
         #ifdef USE_OMP
         const int i_thread = omp_get_thread_num();
@@ -102,14 +103,14 @@ double predict_fm_ftrl_avx(const int* inds, double* vals, int lenn, double L1, d
         }
     }
 
-    for (int k = 0; k < D_fm; k++) {
+    for (k = 0; k < D_fm; k++) {
         double wfmk = 0.0;
         for (int i_thread = 0; i_thread < num_thread;) wfmk += acwfmk[i_thread++ * D_fm + k];
         *w_fm++ = wfmk;
         e2 += wfmk* wfmk;
     }
 
-    for (int k = 0; k < num_thread * 4;) wi2 += wi2_acc[k++];
+    for (k = 0; k < num_thread * 4;) wi2 += wi2_acc[k++];
 
     free(acwfmk);
     free(wi2_acc);
@@ -135,10 +136,11 @@ void update_fm_ftrl_avx(const int* inds, double* vals, int lenn, const double e,
     }
     const double L2_fme = L2_fm / e;
 
+    int ii;
     #ifdef USE_OMP
-    #pragma omp parallel for num_threads(num_thread)
+    #pragma omp parallel for num_threads(num_thread) private(ii)
     #endif
-    for (int ii = 0; ii < lenn; ii++) {
+    for (ii = 0; ii < lenn; ii++) {
         const int i = inds[ii];
         const double v = vals[ii];
         const double g = e * v;
