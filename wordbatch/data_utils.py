@@ -5,6 +5,7 @@ import multiprocessing
 from contextlib import contextmanager
 from functools import partial
 from multiprocessing.pool import ThreadPool
+import scipy.sparse as ssp
 
 @contextmanager
 def timer(name):
@@ -14,8 +15,10 @@ def timer(name):
 
 def shuffle(*objects, seed=0):
     #Faster than inplace, but uses more memory
-    shuffled= rnd.RandomState(seed).permutation(len(objects[0]))
-    return [x[shuffled] for x in objects]
+    if isinstance(objects[0], ssp.base.spmatrix):  lenn= objects[0].shape[0]
+    else: lenn= len(objects[0])
+    shuffled= rnd.RandomState(seed).permutation(lenn)
+    return [np.array(x)[shuffled] if type(x)==list else x[shuffled] for x in objects]
 
 def inplace_shuffle(*objects, seed=0):
     #Slower than shuffle, but uses no extra memory
