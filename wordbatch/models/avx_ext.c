@@ -13,7 +13,8 @@
 
 #endif
 
-#include <malloc.h>
+//#include <malloc.h> //Deprecated
+#include <stdlib.h>
 #include <math.h>
 
 double predict_fm_ftrl_avx(const int* inds, double* vals, int lenn, double L1, double baL2, double ialpha, double beta,
