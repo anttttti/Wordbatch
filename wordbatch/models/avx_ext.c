@@ -22,7 +22,9 @@ double predict_fm_ftrl_avx(const int* inds, double* vals, int lenn, double L1, d
     int bias_term, int n_threads) {
     double e = 0.0;
     double e2 = 0.0;
-    if (bias_term) e += *w = -*z / ((beta + sqrt(*n)) * ialpha);
+    if (bias_term)
+        if (*z!=0.0) e += *w = -*z / ((beta + sqrt(*n)) * ialpha);
+        else *w = 0.0;
     int k, ii;
 
     /*

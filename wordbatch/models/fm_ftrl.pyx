@@ -38,8 +38,10 @@ cdef double predict_single(int* inds, double* vals, int lenn, double L1, double 
 	cdef double sign, zi, d, wi, wi2, wfmk, e= 0.0, e2= 0.0
 
 	if bias_term:
-		wi= w[0]= -z[0] / ((beta+sqrt(n[0])) * ialpha)
-		e+= wi
+		if z[0] != 0:
+			wi = w[0] = -z[0] / ((beta + sqrt(n[0])) * ialpha)
+			e += wi
+		else:  w[0] = 0.0
 
 	for ii in prange(lenn, nogil=True, num_threads= threads):
 		i= inds[ii]
