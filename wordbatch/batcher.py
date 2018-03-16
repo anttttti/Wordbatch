@@ -121,7 +121,7 @@ class Batcher(object):
         return data_split
 
     def merge_batches(self, data):
-        """Merge a list of data batches into one single instance representing the data
+        """Merge a list of data mini-batches into one single data instance
 
         Parameters
         ----------
@@ -139,7 +139,12 @@ class Batcher(object):
 
     def parallelize_batches(self, task, data, args, method=None, timeout=-1, rdd_col= 1, input_split=False,
                             merge_output= True, minibatch_size= None, procs=None):
-        """
+        """Apply a specified function/task to the data specified in parallel
+
+        Data will be splitted into mini-batches unless explicitly declared not to
+        do so. Then workers will apply the function to the mini-batches in parallel.
+        More specifically, every single time in every single process/thread, there is
+        exactly one worker applying the function to exactly one mini-batch
 
         Parameters
         ----------
@@ -169,10 +174,13 @@ class Batcher(object):
 
         input_split: boolean, default False
             If True, data will be splitted into single samples before applying task in parellel, otherwise
-            data will just be splitted into batches with specified size.
+            data will just be splitted into mini-batches with specified size. Note that you can also split
+            data into mini-batches in advance, and then pass them to this method with this parameter set to
+            True. Then the program will split your data into "single samples", which in this case is
+            actually the mini-batches you have splitted in advance.
 
         merge_output: boolean, default True
-            If True, results from batches will be merged into one single instance before return.
+            If True, results from mini-batches will be merged into one single instance before return.
 
         minibatch_size: int
             Expected size of each mini-batch to individually perform task on. The actual sizes will be
@@ -180,7 +188,7 @@ class Batcher(object):
             as this value or smaller.
 
         procs: int
-            Number of process(es)/thread(s) to use to execute task in parallel
+            Number of process(es)/thread(s) to use to execute task in parallel.
 
         Returns
         -------
