@@ -5,6 +5,8 @@ import multiprocessing
 from contextlib import contextmanager
 from functools import partial
 from multiprocessing.pool import ThreadPool
+import itertools
+import scipy.sparse as ssp
 
 @contextmanager
 def timer(name):
@@ -14,8 +16,10 @@ def timer(name):
 
 def shuffle(*objects, seed=0):
     #Faster than inplace, but uses more memory
-    shuffled= rnd.RandomState(seed).permutation(len(objects[0]))
-    return [x[shuffled] for x in objects]
+    if isinstance(objects[0], ssp.base.spmatrix):  lenn= objects[0].shape[0]
+    else: lenn= len(objects[0])
+    shuffled= rnd.RandomState(seed).permutation(lenn)
+    return [np.array(x)[shuffled] if type(x)==list else x[shuffled] for x in objects]
 
 def inplace_shuffle(*objects, seed=0):
     #Slower than shuffle, but uses no extra memory
@@ -30,3 +34,18 @@ def inplace_shuffle_threaded(*objects, threads= 0, seed=0):
     with ThreadPool(processes=threads) as pool:
         pool.map(partial(inplace_shuffle, seed=seed), objects)
 
+def indlist2csrmatrix(indlist, datalist= None, shape= None):
+    #Convert a list indicator lists to a scipy.sparse.csr_matrix
+    indptr= [0]
+    c= 0
+    for x in indlist:
+        c+= len(x)
+        indptr.append(c)
+    indices = list(itertools.chain.from_iterable(indlist))
+    if datalist!=None:
+        data= list(itertools.chain.from_iterable(datalist))
+    else:
+        data= np.ones(len(indices), dtype=np.float64)
+    if shape==None:  shape= (len(indlist), max(indices))
+    X= ssp.csr_matrix((data, indices, indptr), shape=shape)
+    return X

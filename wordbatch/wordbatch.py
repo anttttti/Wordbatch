@@ -89,7 +89,7 @@ def default_normalize_text(text):
     return u" ".join([x for x in [y for y in non_alphanums.sub(' ', text).lower().strip().split(" ")] if len(x)>1])
 
 class WordBatch(object):
-    def __init__(self, normalize_text= default_normalize_text, spellcor_count=0, spellcor_dist= 2, n_words= 10000000,
+    def __init__(self, normalize_text= default_normalize_text, spellcor_count=0, spellcor_dist= 2, max_words= 10000000,
                  min_df= 0, max_df= 1.0, raw_min_df= -1, procs= 0, minibatch_size= 20000,
                  stemmer= None, pos_tagger= None, extractor=None, timeout= 600, use_sc= False, freeze= False,
                  method= "multiprocessing", verbose= 1):
@@ -104,6 +104,9 @@ class WordBatch(object):
         self.raw_dft= Counter()
         self.preserve_raw_dft= False
 
+        import wordbatch.transformers.dictionary as dictionary
+        self.dictionary= dictionary.Dictionary(self.batcher, min_df=min_df, max_df=max_df, max_words= 10000000000000,
+                                               freeze= False, verbose=1)
         self.normalize_text= normalize_text
         if spellcor_count==0:  spellcor_dist= 0
         elif spellcor_dist==0:  spellcor_count= 0
@@ -115,74 +118,22 @@ class WordBatch(object):
         self.pos_tagger= pos_tagger
 
         self.doc_count= 0
-        self.n_words= n_words
+        self.max_words= max_words
         self.min_df= min_df
         self.max_df= max_df
 
         self.set_extractor(extractor)
 
     def reset(self):
-        self.dictionary = {}
-        self.dft = Counter()
-        self.raw_dft = Counter()
+        self.dictionary.reset()
         return self
 
     def set_extractor(self, extractor=None):
         if extractor != None:
-            if type(extractor) != tuple and type(extractor) != list:  self.extractor = extractor(self, {})
-            else:  self.extractor = extractor[0](self, extractor[1])
+            if type(extractor) != tuple and type(extractor) != list:
+                self.extractor = extractor(self.batcher, self.dictionary,  {})
+            else:  self.extractor = extractor[0](self.batcher, self.dictionary, extractor[1])
         else: self.extractor = None
-
-    def get_pruning_dft(self, dft):
-        sorted_dft = sorted(list(dft.items()), key=operator.itemgetter(1), reverse=True)
-        if type(self.min_df) == type(1):  min_df2 = self.min_df
-        else:  min_df2 = self.doc_count * self.min_df
-        if type(self.max_df) == type(1):   max_df2 = self.max_df
-        else:  max_df2 = self.doc_count * self.max_df
-        return sorted_dft, min_df2, max_df2
-
-
-    def update_dictionary(self, texts, dft, dictionary, min_df, input_split= False):
-        #Update document frequencies.
-        dfts2= self.parallelize_batches(batch_get_dfs, texts, [], input_split= input_split,
-                                        merge_output=False)
-        if self.use_sc==True:  dfts2= [batch[1] for batch in dfts2.collect()]
-        if dictionary!=None:  self.doc_count+= sum([dft2.pop(WB_DOC_CNT) for dft2 in dfts2])
-        for dft2 in dfts2:  dft.update(dft2)
-
-        if dictionary!=None:
-            #Add entries. Online pruning only used to prevent inclusion into dictionary
-            sorted_dft, min_df2, max_df2 = self.get_pruning_dft(dft)
-            for word, df in sorted_dft:
-                if len(dictionary)>= self.n_words: break
-                if df<min_df2 or df>max_df2: continue
-                if word in dictionary:  continue
-                dictionary[word] = len(dictionary)+1
-                if self.verbose>2: print("Add word to dictionary:", word, dft[word], dictionary[word])
-
-    def prune_dictionary(self, n_words=None, min_df=None, max_df=None, re_encode= False, prune_dfs= True,
-                         set_n_words= True):
-        #Prune dictionary. Optionally prune document frequency table as well
-        if n_words!=None: self.n_words= n_words
-        if min_df!=None: self.min_df= min_df
-        if max_df!= None: self.max_df= max_df
-        n_words= self.n_words
-        dictionary = self.dictionary
-        dft = self.dft
-        sorted_dft, min_df2, max_df2 = self.get_pruning_dft(dft)
-        c= 0
-        print(len(sorted_dft), len(self.dictionary), len(self.raw_dft))
-        for word, df in sorted_dft:
-            if word not in dictionary:
-                if re_encode:  dictionary[word]= -1
-                else:  continue
-            c+= 1
-            if c > n_words or df < min_df2 or df > max_df2:
-                if prune_dfs: dft.pop(word)
-                dictionary.pop(word)
-            elif re_encode:
-                dictionary[word]= c
-        if set_n_words:  self.n_words= len(dictionary)
 
     def normalize_texts(self, texts, input_split=False, merge_output=True):
         texts2= self.parallelize_batches(batch_normalize_texts, texts, [self.normalize_text],
@@ -230,7 +181,8 @@ class WordBatch(object):
             if self.preserve_raw_dft==False:  self.raw_dft= Counter()
 
         if update:
-            self.update_dictionary(texts, self.dft, self.dictionary, self.min_df, input_split= input_split)
+            #self.update_dictionary(texts, self.dft, self.dictionary, self.min_df, input_split= input_split)
+            self.dictionary.fit(texts, input_split=input_split, reset= reset)
 
         if self.verbose> 2: print("len(self.raw_dft):", len(self.raw_dft), "len(self.dft):", len(self.dft))
         return texts
