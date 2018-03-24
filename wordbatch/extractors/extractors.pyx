@@ -196,16 +196,17 @@ class WordBag:
 		return lz4_to_csr(file)
 
 class WordHash:
-	def __init__(self, dictionary, fea_cfg):
+	def __init__(self, batcher, dictionary, fea_cfg):
+		self.batcher= batcher
 		self.dictionary= dictionary
 		self.hv= HashingVectorizer(**fea_cfg)
 
 	def batch_transform(self, texts):  return self.hv.transform(texts)
 
 	def transform(self, texts, input_split= False, merge_output= True):
-		if self.wb.verbose> 0:  print("Extract wordhashes")
-		return self.wb.parallelize_batches(batch_transform, texts, [self], input_split= input_split,
-										   merge_output= merge_output, procs= int(self.wb.batcher.procs / 2))
+		#if self.wb.verbose> 0:  print("Extract wordhashes")
+		return self.batcher.parallelize_batches(batch_transform, texts, [self], input_split= input_split,
+										   merge_output= merge_output, procs= int(self.batcher.procs / 2))
 
 	def save_features(self, file, features):
 		csr_to_lz4(file, features)

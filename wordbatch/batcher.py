@@ -25,8 +25,6 @@ def _pickle_method(m):
         else:  return getattr, (m.__self__, m.__func__.__name__)
 copy_reg.pickle(types.MethodType, _pickle_method)
 
-def batch_apply(args):
-    return args[1].predict(args[0])
 
 
 #def batch_object_call(args):

@@ -39,7 +39,7 @@ class WordbagRegressor(object):
         else: self.train(datadir, pickle_model)
 
     def fit_batch(self, texts, labels, rcount):
-        texts, labels= self.wb.shuffle_batch(texts, labels, rcount)
+        texts, labels= self.wb.batcher.shuffle_batch(texts, labels, rcount)
         print("Transforming", rcount)
         texts= self.wb.fit_transform(texts, reset= False)
         print("Training", rcount)

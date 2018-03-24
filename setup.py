@@ -10,7 +10,7 @@ else:
     fopenmp_arg = "-fopenmp"
 setup(
     name='Wordbatch',
-    version='1.3.4',
+    version='1.3.5',
     description='Parallel text feature extraction for machine learning',
     url='https://github.com/anttttti/Wordbatch',
     author='Antti Puurula',
@@ -18,7 +18,8 @@ setup(
 
     packages=['wordbatch',
               'wordbatch.extractors',
-              'wordbatch.models'
+              'wordbatch.models',
+              'wordbatch.transformers'
     ],    
 
     license='GNU GPL 2.0',
