@@ -8,7 +8,7 @@ if os.name == 'nt':
     extra_compile_args = ["/openmp", "/Ox", "/arch:AVX2", "/fp:fast"]
     extra_link_args = []
 else:
-    extra_compile_args = ["-O3", "-fopenmp", "-ffast-math", "-mavx2", "-march=native", "-ftree-vectorize"]
+    extra_compile_args = ["-O3", "-fopenmp", "-ffast-math", "-mavx2", "-march=native", "-ftree-vectorize", "-std=gnu11"]
     extra_link_args = ["-fopenmp"]
 
 setup(
