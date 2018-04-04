@@ -119,7 +119,7 @@ class Batcher(object):
         return data_split
 
     def merge_batches(self, data):
-        """Merge a list of data minibatches into one single instance representing the data
+        """Merge a list of data minibatches into one single data instance
 
         Parameters
         ----------
@@ -137,7 +137,12 @@ class Batcher(object):
 
     def parallelize_batches(self, task, data, args, method=None, timeout=-1, rdd_col= 1, input_split=False,
                             merge_output= True, minibatch_size= None, procs=None):
-        """
+        """Apply a specified function/task to the data specified in parallel
+
+        Data will be splitted into mini-batches unless explicitly declared not to
+        do so. Then workers will apply the function to the mini-batches in parallel.
+        More specifically, every single time in every single process/thread, there is
+        exactly one worker applying the function to exactly one mini-batch
 
         Parameters
         ----------
@@ -170,7 +175,7 @@ class Batcher(object):
 
         merge_output: boolean, default True
             If True, results from minibatches will be reduced into one single instance before return.
-
+            
         minibatch_size: int
             Expected size of each mini-batch to individually perform task on. The actual sizes will be
             the same as the specified value except the last mini-batch, whose size might be exactly the same

@@ -17,6 +17,21 @@ import wordbatch.batcher as batcher
 WB_DOC_CNT= u'###DOC_CNT###' #Used for Spark document counting across RDFs
 
 def batch_get_dfs(args):
+    """Count Word/Token Occurrences over a batch of documents along with total document counts.
+
+    Parameters
+    ----------
+    args: list
+        The first entry(args[0]) is a list of string representing each document.
+
+    Returns
+    -------
+    dft: Counter
+        Keep records of occurrence(s) of each word in the corpus and the total
+        document counts. The occurence(s) of a single word can be accessed with
+        the word itself as a dictionary key, and the total document counts can
+        be accessed with WB_DOC_CNT, which is '###DOC_CNT###' in this case.
+    """
     dft= Counter()
     for text in args[0]:
         for word in set(text.split(" ")):  dft[word]+= 1
@@ -24,13 +39,78 @@ def batch_get_dfs(args):
     return dft
 
 def batch_normalize_texts(args):
+    """Apply a specified normalization function to a batch of documents.
+
+    Parameters
+    ----------
+    args: list
+        The first entry(args[0]) is a list of string containing every document
+        to normalize. And the second entry(args[1]) is the normalization
+        function to apply, which accepts a single string as input and output
+        a single string.
+
+    Returns
+    -------
+    (anonymous): list
+        List of normalized documents.
+    """
     normalize_text= args[1]
     return [normalize_text(text) for text in args[0]]
 
 def batch_predict(args):
+    """Make Predictions on specified data with a specified estimator/model.
+
+    Parameters
+    ----------
+    args: list
+        The first entry(args[0] is an estimator with a "predict" method
+        implemented. And the second entry(args[1]) is a list-like object,
+        representing the data(n_samples x n_features) to make predictions on.
+
+    Returns
+    -------
+    (anonymous): list-like
+        The predictions given by the estimator using the data passed.
+    """
     return args[1].predict(args[0])
 
 def correct_spelling(word, dft, spell_index, spellcor_count, spellcor_dist):
+    """Get the optimal suggestion for correcting the specified word.
+
+    Parameters
+    ----------
+    word: str
+        Original word/token to correct.
+
+    dft: Counter | dict
+        Global occurrence counter to look up. This matters in two ways:
+        (1) If the occurrence frequency is less than or equal to a given
+        threshold(i.e. the "spellcor_count" parameter), then no correction
+        searching will be triggered and the word will just be "corrected" by
+        itself. (2) If more than one suggestions are found, the one with the
+        highest occurrence frequency will be selected as the best suggestion.
+
+    spell_index: dict
+        Auxilliary dictionary for suggestion searching, with string as keys and
+        lists of string as values. Each key represents a word/token and each value
+        represents a list of possible correction suggestions for the word/token.
+
+    spellcor_count: int
+        The threshold of word occurrence frequency for the word to be corrected.
+        If occurrence number of the specified word is less than or equal to this
+        number, no correction program will be triggered for this word.
+
+    spellcor_dist: int
+        Max distance within which the correction suggestions are searched. The
+        distance metrics is defined by "Levenshtein Distance", i.e., the number
+        of characters to insert/delete/alter to turn one given word into the other.
+
+    Returns
+    -------
+    max_word: str
+        The best word/token found to correct the original word. If no qualified
+        words/tokens found, this will be set to the original word itself.
+    """
     #T. Bocek, E. Hunt, B. Stiller: Fast Similarity Search in Large Dictionaries, 2007
     if dft.get(word, 0)>spellcor_count or len(word)<3:  return word
     max_df= -100000000000000
@@ -55,6 +135,23 @@ def correct_spelling(word, dft, spell_index, spellcor_count, spellcor_dist):
     return max_word
 
 def batch_correct_spellings(args):
+    """Correct spelling and add POS information for a batch of documents.
+
+    Parameters
+    ----------
+    args: list
+        List of arguments. The first entry(args[0]) should be a list(or list-like container)
+        of string representing the documents. The second entry(args[1]) should be a dictionary
+        for correction, which maps raw words/tokens to the best correction suggestions. The
+        third entry(args[2]) is a POS tagging method (input and output form to be checked).
+
+    Returns
+    -------
+    res: list
+        List of processed documents. The processing includes: (1)correct words using given
+        suggestions. (2)concatenate the POS tag behind the corrected word to achieve finer-grained
+        representation.
+    """
     corrs= args[1]
     if args[2]== None:
         return [u" ".join([corrs.get(word, word) for word in text.split(" ")]) for text in args[0]]
@@ -63,7 +160,7 @@ def batch_correct_spellings(args):
     pos_tagger= args[2]
     for text in args[0]:
         text2= []
-        tags= pos_tagger(text)
+        tags= pos_tagger(text)  # Placed after the text splitting? It works wrong while the input is a plain string
         text= text.split(" ")
         for y in range(len(text)):
             word= text[y]
@@ -72,6 +169,30 @@ def batch_correct_spellings(args):
     return res
 
 def get_deletions(word, order):
+    """Get tokens derived from a word by deleting at most a particular number of characters
+
+    Parameters
+    ----------
+    word: str
+        Original word/token to start the deletion with.
+
+    order: int
+        The maximum number of characters to delete.
+
+    Returns
+    -------
+    (anonymous): list
+        List containing all tokens that can be derived the the specified word
+        by deleting some characters, where the number of characters deleted is
+        not greater than the number specified. Note that the original word itself
+        will not be included in the return.
+
+    Examples
+    --------
+    >>> get_deletions("hello", 3)
+    ['ell', 'hll', 'heo', 'ello', 'eo', 'hell', 'lo', 'hel', 'el', 'hlo', 'll',
+    'he', 'ho', 'llo', 'hl', 'hllo', 'helo', 'elo']
+    """
     stack = {word: order}
     results = {}
     while len(stack) > 0:
@@ -89,6 +210,61 @@ def default_normalize_text(text):
     return u" ".join([x for x in [y for y in non_alphanums.sub(' ', text).lower().strip().split(" ")] if len(x)>1])
 
 class WordBatch(object):
+    """
+
+    Parameters
+    ----------
+    normalize_text:
+
+    spellcor_count:
+
+    spellcor_dist:
+
+    n_words:
+
+    min_df: int | float in range [0.0, 1.0]
+
+    max_df: int | float in range [0.0, 1.0]
+
+    raw_min_df:
+
+    procs: int
+
+    minibatch_size:
+
+    stemmer:
+
+    pos_tagger:
+
+    extractor: type | list | tuple
+
+    timeout: int | float
+
+    use_sc: boolean
+
+    freeze: boolean
+
+    method: {'serial', 'multiprocessing', 'threading'}
+
+    verbose:
+
+    Attributes
+    ----------
+    batcher: batcher.Batcher
+
+    dictionary:
+
+    dft: Counter
+
+    raw_dft: Counter
+
+    preserve_raw_dft: bool
+
+    doc_count: int
+
+    extractor: extractors.WordBag
+
+    """
     def __init__(self, normalize_text= default_normalize_text, spellcor_count=0, spellcor_dist= 2, n_words= 10000000,
                  min_df= 0, max_df= 1.0, raw_min_df= -1, procs= 0, minibatch_size= 20000,
                  stemmer= None, pos_tagger= None, extractor=None, timeout= 600, use_sc= False, freeze= False,
@@ -122,18 +298,55 @@ class WordBatch(object):
         self.set_extractor(extractor)
 
     def reset(self):
+        """Clear the instance's dictionary and word counters"""
         self.dictionary = {}
         self.dft = Counter()
         self.raw_dft = Counter()
         return self
 
     def set_extractor(self, extractor=None):
+        """Set the extractor associated with the instance.
+
+        Parameters
+        ----------
+        extractor: type | list | tuple | None
+            If type, it specified the class of the extractor to use, and an extractor
+            instance with default settings will be constructed. If list or tuple, the
+            first entry(extractor[0]) should be type indicating the class of the extractor
+            to use, and the second entry(extractor[1]) should be a dictionary representing
+            the setting of the extractor. If None, the instance's extractor will be
+            simply set as None.
+        """
         if extractor != None:
             if type(extractor) != tuple and type(extractor) != list:  self.extractor = extractor(self, {})
             else:  self.extractor = extractor[0](self, extractor[1])
         else: self.extractor = None
 
     def get_pruning_dft(self, dft):
+        """Prepare meta-data for further dictionary pruning.
+
+        Parameters
+        ----------
+        dft: Counter
+            Dictionary to be pruned. As a Counter instance it should have words
+            as keys and occurrence frequencies as values. Note that it will not be
+            pruned here, what this method is responsible for is just to prepare
+            meta-data for the pruning process in the next steps.
+
+        Returns
+        -------
+        sorted_dft: Counter
+            Dictionary sorted from the original one in descending order, i.e.
+            words with highest frequencies will be placed at the top.
+
+        min_df2: int
+            The lower threshold to be used in further pruning. Words with a document
+            frequency strictly lower than the given value will be pruned out.
+
+        max_df2 : int
+            The upper threshold to be used in further pruning. Words with a document
+            frequency strictly higher than the given value will be pruned out.
+        """
         sorted_dft = sorted(list(dft.items()), key=operator.itemgetter(1), reverse=True)
         if type(self.min_df) == type(1):  min_df2 = self.min_df
         else:  min_df2 = self.doc_count * self.min_df
@@ -143,6 +356,30 @@ class WordBatch(object):
 
 
     def update_dictionary(self, texts, dft, dictionary, min_df, input_split= False):
+        """Update word frequency counter and word-index dictionary with given documents.
+
+        Parameters
+        ----------
+        texts: list
+            List of list-like objects representing document mini-batches. Each entry
+            should be a list-like object with each single document, which should be
+            a string, as an entry.
+
+        dft: Counter
+            Original counter to update. New Occurrences found in given documents
+            will be added to this instance inplace.
+
+        dictionary: dict | None
+            Dictionary mapping words to unique indices. It contains string keys
+            and integer values. If specified as None, no tracking of the words and
+            corresponding indices will be performed.
+
+        min_df: (To removed? this parameter is not used)
+
+        input_split: boolean, default False
+            If True, data will be splitted into single samples before applying task in parellel, otherwise
+            data will processed in mini-batches.
+        """
         #Update document frequencies.
         dfts2= self.parallelize_batches(batch_get_dfs, texts, [], input_split= input_split,
                                         merge_output=False)
@@ -185,11 +422,68 @@ class WordBatch(object):
         if set_n_words:  self.n_words= len(dictionary)
 
     def normalize_texts(self, texts, input_split=False, merge_output=True):
+        """Normalize documents with basic non-semantic rules in parallel.
+
+        The normalization here is some cleaning regardless of the corpora or any semantic
+        knowledge. For example, removing or replacing some special characters.
+
+        Parameters
+        ----------
+        texts: list-like
+            List-like object containing every single document to normalize as an entry.
+
+        input_split: boolean, default False
+            If True, data will be splitted into single samples before applying task in parellel, otherwise
+            data will just be splitted into mini-batches with specified size.
+
+        merge_output: boolean, default True
+            If True, results from mini-batches will be merged into one single instance before being
+            returned, otherwise they will be returned in form of list.
+
+        Returns
+        -------
+        texts2: list-like | list of list-like
+            If merge_output is specified as True, this will be a list-like object representing
+            the normalized documents, with each entry as a normalized document. Otherwise this
+            will be a list of list-like objects, with each entry representing the results
+            from a mini-batch.
+        """
         texts2= self.parallelize_batches(batch_normalize_texts, texts, [self.normalize_text],
                                           input_split=input_split, merge_output=merge_output)
         return texts2
 
     def normalize_wordforms(self, texts, input_split= False, merge_output= True):
+        """Normalize documents with semantic rules in parallel.
+
+        The normalization here is some cleaning with corpora or some semantic
+        knowledge involved. For example, correction of words using other high-frequency
+        words discovered in the corpora, stemming.
+
+        Parameters
+        ----------
+        texts: list-like
+            List-like object containing every single document to normalize or
+            every mini-batch of documents to normalize as an entry.
+
+        input_split: boolean, default False
+            If True, every single entry in 'texts' will be regarded as a mini-batch and processed
+            by an individual process/thread, otherwise, it will be splitted into mini-batches
+            before processed by the workers. Note that if your 'texts' is already a list of
+            mini-batches, you should set this parameters as True so that no over-splitting
+            will happen.
+
+        merge_output: boolean, default True
+            If True, results from mini-batches will be merged into one single instance before being
+            returned, otherwise they will be returned in form of list.
+
+        Returns
+        -------
+        (anonymous): list-like | list of list-like
+            If merge_output is specified as True, this will be a list-like object representing
+            the documents, with each entry as a single document. Otherwise this will be a list
+            of list-like objects, with each entry representing the processed results from
+            a mini-batch of documents.
+        """
         if self.verbose > 0:  print("Make word normalization dictionary")
         if self.spellcor_dist>0:
             raw_dft2= {word:self.raw_dft[word]
@@ -213,6 +507,44 @@ class WordBatch(object):
                                         input_split=input_split, merge_output=merge_output)
 
     def process(self, texts, input_split= False, reset= True, update= True):
+        """Normalize documents and update the instance's states accordingly.
+
+        A complete normalization process will be applied to the documents, including
+        general normalization(e.g. removing and replacing special characters) and
+        normalization with corpora information and domain knowledge. Then the instance's
+        data structures, i.e. word counter and word-index dictionary will be updated
+        using the normalized documents. Also similar data structures keeping the information
+        of the raw documents may be kept, according the setting during the instance
+        construction.
+
+        Parameters
+        ----------
+        texts: list-like
+            List-like object containing every single document to process as an entry.
+
+        input_split: boolean, default False
+            If True, before the first normalization process, every single document
+            in 'text' will be regarded as a mini-batch and processed by an individual
+            process/thread, otherwise it will be splitted into mini-batches before
+            processed by workers. It only affects the way how the first normalization
+            process is executed, and does not matter at all in how the subsequent processing
+            is done.
+
+
+        reset: boolean, default True
+            If True, the instance's word counter and dictionary will be cleared
+            before any processing, otherwise the previous records will be kept
+            while new records being added.
+
+        update: boolean, default True
+            If True, the instance's word counter and dictionary will be updated with
+            the processed documents after the normalization.
+
+        Returns
+        -------
+        texts: list
+            List containing mini-batches of normalized documents as entries.
+        """
         if reset:  self.reset()
         if self.freeze:  update= False
 
@@ -236,10 +568,48 @@ class WordBatch(object):
         return texts
 
     def fit(self, texts, input_split= False, reset= True):
+        """
+        Parameters
+        ----------
+        texts: list-like
+            List-like object containing the documents to fit into the model.
+
+        input_split: boolean, default False
+            If True, before the first normalization process, every single document
+            in 'text' will be regarded as a mini-batch and processed by an individual
+            process/thread, otherwise it will be splitted into mini-batches before
+            processed by workers. It only affects the way how the first normalization
+            process is executed, and does not matter at all in how the subsequent processing
+            is done.
+
+        reset: boolean, default True
+            If True, the instance's word counter and dictionary will be cleared
+            before fitting, otherwise the previous records will be kept
+            while new records being added.
+        """
         self.process(texts, input_split, reset=reset, update= True)
         return self
 
     def transform(self, texts, extractor= None, cache_features= None, input_split= False, reset= False, update= False):
+        """
+
+        Parameters
+        ----------
+        texts:
+
+        extractor:
+
+        cache_features:
+
+        input_split:
+
+        reset:
+
+        update:
+
+        Returns
+        -------
+        """
         if self.use_sc==True:  cache_features= None  #No feature caching with Spark
         if extractor== None:  extractor= self.extractor
         if cache_features != None and os.path.exists(cache_features):  return extractor.load_features(cache_features)
@@ -249,11 +619,12 @@ class WordBatch(object):
         if extractor!= None:
             texts= extractor.transform(texts, input_split= True, merge_output= True)
             if cache_features!=None:  extractor.save_features(cache_features, texts)
-            return texts
+            return texts  # Antti: would you mind unify the symbol of return? It will be better for documentation
         else:
             return self.merge_batches(texts)
 
     def partial_fit(self, texts, input_split=False):
+        """Fit the model with the previous records will always be cleared at the beginning"""
         return self.fit(texts, input_split, reset=False)
 
     def fit_transform(self, texts, extractor=None, cache_features=None, input_split=False, reset=True):
@@ -263,19 +634,47 @@ class WordBatch(object):
         return self.transform(texts, extractor, cache_features, input_split, reset=False, update=True)
 
     def predict_parallel(self, texts, clf, procs=None):
+        """Make Predictions with a specified estimator/model in parallel
+
+        Parameters
+        ----------
+        texts: list-like
+            List of samples to make predictions on.
+
+        clf: object
+            Estimator/Model to make predictions with a "predict" function
+            implemented.
+
+        procs: int | None, default None
+            If specified as an integer, it indicates the number of
+            process(es)/thread(s) to use to make prediction in parallel.
+            If None, half of process(es)/thread(s) of the associated batcher
+            will be used as default.
+
+        Returns
+        -------
+        (anonymous): list-like
+            List-like object containing every single prediction as
+            an entry.
+
+        """
         if procs==None: procs= int(self.batcher.procs / 2)
         return self.merge_batches(self.parallelize_batches(batch_predict, texts, [clf], procs=procs))
 
     def parallelize_batches(self, *args, **kwargs):
+        """Apply a specified function/task to the data specified in parallel"""
         return self.batcher.parallelize_batches(*args, **kwargs)
 
     def split_batches(self, *args, **kwargs):
+        """Split data into mini-batches"""
         return self.batcher.split_batches(*args, **kwargs)
 
     def merge_batches(self, *args, **kwargs):
+        """Merge a list of data mini-batches into one single data instance"""
         return self.batcher.merge_batches(*args, **kwargs)
 
     def shuffle_batch(self, *args, **kwargs):
+        """Shuffle a list of samples, as well as the labels if specified"""
         return self.batcher.shuffle_batch(*args, **kwargs)
 
     def __getstate__(self):
