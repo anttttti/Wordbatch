@@ -5,9 +5,12 @@ import numpy
 import os
 
 if os.name == 'nt':
-    fopenmp_arg= "/openmp"
+    extra_compile_args = ["/openmp", "/Ox", "/arch:AVX2", "/fp:fast"]
+    extra_link_args = []
 else:
-    fopenmp_arg = "-fopenmp"
+    extra_compile_args = ["-O3", "-fopenmp", "-ffast-math", "-mavx2", "-march=native", "-ftree-vectorize", "-std=gnu11"]
+    extra_link_args = ["-fopenmp"]
+
 setup(
     name='Wordbatch',
     version='1.3.5',
@@ -42,35 +45,31 @@ setup(
                             ["wordbatch/extractors/extractors.pyx", "wordbatch/extractors/MurmurHash3.cpp"],
                             libraries= [],
                             include_dirs=[numpy.get_include(), '.'],
-                            extra_compile_args = ["-O3", "-ffast-math", "-march=native", "-ftree-vectorize"],
-                            extra_link_args=[fopenmp_arg]),
+                            extra_compile_args = extra_compile_args,
+                            extra_link_args=extra_link_args),
                   Extension("wordbatch.models.ftrl",
                             ["wordbatch/models/ftrl.pyx"],
                             libraries= [],
                             include_dirs=[numpy.get_include(), '.'],
-                            extra_compile_args = ["-O3", fopenmp_arg, "-ffast-math", "-march=native",
-                                                  "-ftree-vectorize"],
-                            extra_link_args=[fopenmp_arg]),
+                            extra_compile_args = extra_compile_args,
+                            extra_link_args=extra_link_args),
                   Extension("wordbatch.models.fm_ftrl",
                             ["wordbatch/models/fm_ftrl.pyx", "wordbatch/models/avx_ext.c"],
                             libraries= [],
                             include_dirs=[numpy.get_include(), '.'],
-                            extra_compile_args = ["-O3", fopenmp_arg, "-ffast-math", "-mavx2", "-march=native",
-                                                  "-ftree-vectorize"],
-                            extra_link_args=[fopenmp_arg]),
+                            extra_compile_args = extra_compile_args,
+                            extra_link_args=extra_link_args),
                   Extension("wordbatch.models.nn_relu_h1",
                             ["wordbatch/models/nn_relu_h1.pyx"],
                             libraries= [],
                             include_dirs=[numpy.get_include(), '.'],
-                            extra_compile_args = ["-O3", fopenmp_arg, "-ffast-math", "-march=native",
-                                                  "-ftree-vectorize"],
-                            extra_link_args=[fopenmp_arg]),
+                            extra_compile_args = extra_compile_args,
+                            extra_link_args=extra_link_args),
                   Extension("wordbatch.models.nn_relu_h2",
                             ["wordbatch/models/nn_relu_h2.pyx"],
                             libraries= [],
                             include_dirs=[numpy.get_include(), '.'],
-                            extra_compile_args = ["-O3", fopenmp_arg, "-ffast-math", "-march=native",
-                                                  "-ftree-vectorize"],
-                            extra_link_args=[fopenmp_arg])
+                            extra_compile_args = extra_compile_args,
+                            extra_link_args=extra_link_args),
         ]
 )

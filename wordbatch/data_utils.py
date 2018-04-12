@@ -7,6 +7,7 @@ from functools import partial
 from multiprocessing.pool import ThreadPool
 import itertools
 import scipy.sparse as ssp
+from scipy.sparse import csr_matrix
 
 @contextmanager
 def timer(name):
