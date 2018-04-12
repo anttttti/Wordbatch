@@ -43,11 +43,11 @@ class WordseqRegressor():
         K.set_session(tf.Session(graph=tf.get_default_graph(), config=session_conf))
 
         self.maxlen = 200
-        self.n_words = 20000
-        self.wb= wordbatch.WordBatch(normalize_text, n_words=self.n_words,
+        self.max_words = 20000
+        self.wb= wordbatch.WordBatch(normalize_text, max_words=self.max_words,
                                              extractor=(WordSeq, {"seq_maxlen": self.maxlen}))
         self.model = Sequential()
-        self.model.add(Embedding(self.n_words+2, 20, input_length=self.maxlen))
+        self.model.add(Embedding(self.max_words+2, 20, input_length=self.maxlen))
 
         self.model.add(Conv1D(activation="relu", padding="same", strides=1, filters=10, kernel_size=3))
         self.model.add(Dropout(0.5))

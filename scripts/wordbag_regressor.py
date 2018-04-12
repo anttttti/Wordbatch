@@ -34,12 +34,12 @@ class WordbagRegressor(object):
     def __init__(self, pickle_model="", datadir=None):
         self.wb = wordbatch.WordBatch(normalize_text, extractor=(WordBag, {"hash_ngrams":3,
           "hash_ngrams_weights":[-1.0, -1.0, 1.0],"hash_size":2**23, "norm":'l2', "tf":'binary', "idf":50.0}) )
-        self.clf= FTRL(alpha=1.0, beta=1.0, L1=0.00001, L2=1.0, D=2 ** 25, iters=1, inv_link="identity")
+        self.clf= FTRL(alpha=1.0, beta=1.0, L1=0.00001, L2=1.0, D=2 ** 23, iters=1, inv_link="identity")
         if datadir==None:  (self.wb, self.clf)= pkl.load(gzip.open(pickle_model, 'rb'))
         else: self.train(datadir, pickle_model)
 
     def fit_batch(self, texts, labels, rcount):
-        texts, labels= self.wb.shuffle_batch(texts, labels, rcount)
+        texts, labels= self.wb.batcher.shuffle_batch(texts, labels, rcount)
         print("Transforming", rcount)
         texts= self.wb.fit_transform(texts, reset= False)
         print("Training", rcount)

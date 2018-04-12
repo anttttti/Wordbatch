@@ -9,7 +9,7 @@ from cython.parallel import prange
 from libc.math cimport exp, log, fmax, fmin, sqrt, fabs
 import multiprocessing
 import sys
-import randomstate.prng.xoroshiro128plus as rnd
+import randomgen
 
 if sys.version_info.major == 3:
 	import pickle as pkl
@@ -173,7 +173,7 @@ cdef class FM_FTRL:
 		self.z = np.zeros((D), dtype=np.float64)
 		self.n = np.zeros((D), dtype=np.float64)
 		self.w_fm = np.zeros(D_fm, dtype=np.float64)
-		rand= rnd.RandomState(seed= self.seed)
+		rand= randomgen.xoroshiro128.Xoroshiro128(seed= self.seed).generator
 		self.z_fm = (rand.random_sample(D * D_fm) - 0.5) * self.init_fm
 		self.n_fm = np.zeros(D, dtype=np.float64)
 
@@ -244,7 +244,7 @@ cdef class FM_FTRL:
 		cdef int* inds, indptr
 		cdef double* vals
 
-		rand= rnd.RandomState(seed= seed)
+		rand = randomgen.xoroshiro128.Xoroshiro128(seed=seed).generator
 		for iter in range(self.iters):
 			e_total= 0.0
 			for row in range(row_count):
