@@ -33,7 +33,7 @@ setup(
         "Topic :: Scientific/Engineering :: Artificial Intelligence",
         "Topic :: Software Development :: Libraries :: Python Modules",
     ],
-    install_requires=['cython', 'scikit-learn', 'python-Levenshtein', 'py-lz4framed', 'randomstate'], 
+    install_requires=['cython', 'scikit-learn', 'python-Levenshtein', 'py-lz4framed', 'randomgen'],
     extras_require={'dev': ['nltk', 'textblob', 'keras', 'pandas', 'pyspark']},
     
         

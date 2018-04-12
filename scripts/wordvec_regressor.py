@@ -9,6 +9,7 @@ import gzip
 import wordbatch
 from wordbatch.models import FTRL
 from wordbatch.extractors import WordVec, Hstack
+from wordbatch.data_utils import shuffle
 import threading
 import sys
 if sys.version_info.major == 3:
@@ -38,13 +39,13 @@ class WordvecRegressor(object):
 
         self.wb.dictionary_freeze= True
 
-        self.clf= FTRL(alpha=1.0, beta=1.0, L1=0.00001, L2=1.0, D=2 ** 25, iters=1, inv_link= "identity")
+        self.clf= FTRL(alpha=1.0, beta=1.0, L1=0.00001, L2=1.0, D=100+50, iters=1, inv_link= "identity")
 
         if datadir==None:  (self.wb, self.clf)= pkl.load(gzip.open(pickle_model, 'rb'))
         else: self.train(datadir, pickle_model)
 
     def fit_batch(self, texts, labels, rcount):
-        texts, labels = self.wb.shuffle_batch(texts, labels, rcount)
+        texts, labels = shuffle(texts, labels, seed=rcount)
         print("Transforming", rcount)
         texts= self.wb.fit_transform(texts, reset= False)
         print("Training", rcount)
@@ -55,7 +56,7 @@ class WordvecRegressor(object):
         labels= []
         training_data= os.listdir(datadir)
         rcount= 0
-        batchsize= 100000
+        batchsize= 80000
 
         p= None
         for jsonfile in training_data:
