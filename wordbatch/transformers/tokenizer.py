@@ -6,7 +6,6 @@ from __future__ import print_function
 #from nltk.metrics import edit_distance
 import Levenshtein #python-Levenshtein
 from collections import defaultdict
-import pyspark
 from collections import Counter
 
 WB_DOC_CNT= u'###DOC_CNT###' #Used for Spark document counting across RDFs
@@ -85,7 +84,7 @@ class Tokenizer(object):
 		if self.freeze:  return self
 		dft = self.dft
 		dfts = self.batcher.parallelize_batches(batch_get_dfs, data, [], input_split=input_split, merge_output=False)
-		if type(dfts) == pyspark.RDD:  dfts = [batch[1] for batch in dfts.collect()]
+		if self.batcher.spark_context is not None:  dfts = [batch[1] for batch in dfts.collect()]
 		self.doc_count += sum([dft2.pop(WB_DOC_CNT) for dft2 in dfts])
 		for dft2 in dfts:  dft.update(dft2)
 		return self

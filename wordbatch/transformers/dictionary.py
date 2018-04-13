@@ -5,7 +5,6 @@ from __future__ import absolute_import
 from __future__ import print_function
 from collections import Counter
 import operator
-import pyspark
 
 WB_DOC_CNT= u'###DOC_CNT###' #Used for Spark document counting across RDFs
 
@@ -69,7 +68,7 @@ class Dictionary(object):
 		dft= self.dft
 		word2id= self.word2id
 		dfts= self.batcher.parallelize_batches(batch_get_dfs, data, [], input_split= input_split, merge_output=False)
-		if type(dfts)== pyspark.RDD:  dfts= [batch[1] for batch in dfts.collect()]
+		if self.batcher.spark_context is not None:  dfts= [batch[1] for batch in dfts.collect()]
 		self.doc_count+= sum([dft2.pop(WB_DOC_CNT) for dft2 in dfts])
 		for dft2 in dfts:  dft.update(dft2)
 
