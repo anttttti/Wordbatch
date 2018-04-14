@@ -4,16 +4,9 @@ from __future__ import division
 from __future__ import absolute_import
 from __future__ import print_function
 import multiprocessing
-import types
-from collections import Counter, defaultdict
-import operator
 import re
 import os
-import sys
 import wordbatch.batcher as batcher
-
-#def batch_predict(args):
-#    return args[1].predict(args[0])
 
 non_alphanums= re.compile(u'[^A-Za-z0-9]+')
 def default_normalize_text(text):
@@ -21,17 +14,13 @@ def default_normalize_text(text):
 
 class WordBatch(object):
 	def __init__(self, normalize_text= default_normalize_text, max_words= 10000000, min_df= 0, max_df= 1.0,
-				 spellcor_count=0, spellcor_dist=2, raw_min_df= -1, stemmer= None,
-				 extractor=None,
+				 spellcor_count=0, spellcor_dist=2, raw_min_df= -1, stemmer= None, extractor=None,
 				 procs=0, minibatch_size= 20000, timeout= 600, spark_context= None, freeze= False,
 				 method= "multiprocessing", verbose= 1):
 		if procs==0:  procs= multiprocessing.cpu_count()
 		self.verbose= verbose
-
 		self.batcher= batcher.Batcher(procs=procs, minibatch_size=minibatch_size, timeout=timeout,
 									  spark_context=spark_context, method=method, verbose=verbose)
-		self.dictionary= {}
-		self.dft= Counter()
 
 		import wordbatch.transformers.apply as apply
 		if normalize_text is None:  self.normalize_text= None
@@ -77,7 +66,8 @@ class WordBatch(object):
 			input_split= True
 
 		if self.dictionary is not None:
-			if update:  self.dictionary.fit(texts, input_split=input_split, reset= reset)
+			if update:
+				texts= self.dictionary.fit_transform(texts, input_split=input_split, merge_output=False, reset=reset)
 			if self.verbose> 2: print("len(self.dictionary.dft):", len(self.dictionary.dft))
 		return texts
 
@@ -106,10 +96,6 @@ class WordBatch(object):
 
 	def partial_fit_transform(self, texts, extractor=None, cache_features=None, input_split=False):
 		return self.transform(texts, extractor, cache_features, input_split, reset=False, update=True)
-
-	# def predict_parallel(self, texts, clf, procs=None):
-	#     if procs==None: procs= int(self.batcher.procs / 2)
-	#     return self.merge_batches(self.parallelize_batches(batch_predict, texts, [clf], procs=procs))
 
 	def __getstate__(self):
 		return dict((k, v) for (k, v) in self.__dict__.items())

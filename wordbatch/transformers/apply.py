@@ -18,17 +18,16 @@ class Apply(object):
         self.kwargs= [kwargs]
 
     def fit(self, data, input_split= False):
-        pass
+        return self
 
     def fit_transform(self, data, input_split= False, merge_output= True):
-        self.transform(data, input_split, merge_output)
+        return self.transform(data, input_split, merge_output)
 
     def transform(self, data, input_split= False, merge_output= True):
         return self.batcher.parallelize_batches(batch_apply, data, [self.function]+self.args+self.kwargs,
                                               input_split=input_split, merge_output=merge_output)
 # import wordbatch.batcher as batcher
-# b= batcher.Batcher(method="serial")
-# t= [[1, 2], [3, 4]]
+# b= batcher.Batcher(minibatch_size=2)#, method="serial")
 # import numpy as np
 # a= Apply(b, np.power, [2],{})
-# print(a.transform(t))
+# print(a.transform([1, 2, 3, 4]))

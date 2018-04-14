@@ -84,9 +84,10 @@ class Dictionary(object):
 				if self.verbose>2: print("Add word to dictionary:", word, dft[word], word2id[word])
 		return self
 
-	def fit_transform(self, data, input_split= False, reset= False):
+	def fit_transform(self, data, input_split= False, merge_output= True, reset= False):
 		self.fit(data, input_split, reset)
-		return data
+		return self.transform(data, input_split= input_split, merge_output= merge_output)
 
-	def transform(self, data):
+	def transform(self, data, input_split= False, merge_output= True):
+		if input_split and merge_output: data= self.batcher.merge_batches(data)
 		return data
