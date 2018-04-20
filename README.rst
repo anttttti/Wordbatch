@@ -76,3 +76,9 @@ Starting from 1.2, Wordbatch has full Spark integration. All processing steps wi
 A basic script using this is wordbag_regressor_spark.py, which is the wordbag_regressor.py script modified to run on Spark. This converts each minibatch of training data into an RDD, does feature extraction on the RDD, and collects the resulting features for local FTRL model training. A more practical script should read the data from parallelized storage, and implement model training on the RDD as well.
 
 Parallel prediction is also demonstrated in wordbag_regressor_spark.py. By calling the class with predict_parallel(), it will parallelize prediction either locally or on Spark, depending on whether a SparkContext has been set for the class.
+
+Contributors
+============
+Antti Puurula
+Anders Topper
+Cheng-Tsung Liu
