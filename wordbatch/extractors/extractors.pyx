@@ -19,7 +19,7 @@ if sys.version_info.major == 3:
 	import copyreg as copy_reg
 else:
 	import copy_reg
-
+from wordbatch.data_utils import indlist2csrmatrix
 from cpython cimport array
 cimport cython
 from libc.stdlib cimport abs
@@ -188,6 +188,9 @@ class WordBag:
 		return self.batcher.parallelize_batches(batch_transform, texts, [self], input_split= input_split,
 										   merge_output= merge_output, procs= int(self.batcher.procs / 2))
 
+	def fit(self):
+		return self
+
 	def save_features(self, file, features):
 		csr_to_lz4(file, features)
 
@@ -206,11 +209,15 @@ class WordHash:
 		return self.batcher.parallelize_batches(batch_transform, texts, [self], input_split= input_split,
 										   merge_output= merge_output, procs= int(self.batcher.procs / 2))
 
+	def fit(self):
+		return self
+
 	def save_features(self, file, features):
 		csr_to_lz4(file, features)
 
 	def load_features(self, file):
 		return lz4_to_csr(file)
+
 
 class WordSeq:
 	def __init__(self, batcher, dictionary, fea_cfg):
@@ -243,6 +250,9 @@ class WordSeq:
 		return self.batcher.parallelize_batches(batch_transform, texts, [self], input_split=input_split,
 										   merge_output=merge_output, procs= int(self.batcher.procs / 2))
 
+	def fit(self):
+		return self
+
 	def save_features(self, file, features):
 		save_to_lz4(file, features, dtype=int)
 		i= 0
@@ -256,6 +266,7 @@ class WordSeq:
 		words= load_from_lz4(file, int).tolist()
 		indices= [0]+load_from_lz4(file + ".i", int).tolist()
 		return [words[indices[i]:indices[i+1]] for i in range(len(indices)-1)]
+
 
 class WordVec:
 	def __init__(self, batcher, dictionary, fea_cfg):
@@ -330,6 +341,10 @@ class WordVec:
 		return self.batcher.parallelize_batches(batch_transform, texts, [self], input_split=input_split,
 										   merge_output=merge_output, procs= int(self.batcher.procs / 2))
 
+	def fit(self):
+		return self
+
+
 class Hstack:
 	def __init__(self, batcher, dictionary, fea_cfg):
 		self.batcher= batcher
@@ -345,3 +360,34 @@ class Hstack:
 	def transform(self, texts, input_split= False, merge_output= True):
 		return self.batcher.parallelize_batches(batch_transform, texts, [self], input_split=input_split,
 										   merge_output=merge_output, procs= int(self.batcher.procs / 2))
+
+	def fit(self):
+		return self
+
+
+class PandasHash:
+	def __init__(self, batcher, dictionary, fea_cfg):
+		self.batcher= batcher
+		self.dictionary= dictionary
+		for key, value in fea_cfg.items():  setattr(self, key.lower(), value)
+
+	def batch_transform(self, df):
+		D= self.n_features
+		col_pick= self.col_pick
+		col_salt= self.col_salt
+		col_weight= self.col_weight
+
+		return indlist2csrmatrix(
+			#indlist=np.array([np.vectorize(lambda x: hash(x) % D)(df[col].astype(str)+y)
+			#				  for col, y in zip(col_pick, col_salt)]).T,
+			indlist= np.array([[hash(x + y) % D for x in df[col].astype(str)] for col, y in zip(col_pick, col_salt)]).T,
+			datalist= [col_weight] * len(df),
+			shape= (len(df), D))
+
+	def transform(self, texts, input_split= False, merge_output= True):
+		return self.batcher.parallelize_batches(batch_transform, texts, [self], input_split=input_split,
+										   merge_output=merge_output, procs= int(self.batcher.procs / 2))
+
+	def fit(self):
+		return self
+

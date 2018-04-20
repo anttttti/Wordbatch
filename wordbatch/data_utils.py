@@ -7,13 +7,12 @@ from functools import partial
 from multiprocessing.pool import ThreadPool
 import itertools
 import scipy.sparse as ssp
-from scipy.sparse import csr_matrix
 
 @contextmanager
 def timer(name):
     t0 = time.time()
     yield
-    print(name + " done in " + time.time() - t0 + "s")
+    print(name + " done in " + str(time.time() - t0) + "s")
 
 def shuffle(*objects, seed=0):
     #Faster than inplace, but uses more memory
@@ -24,7 +23,7 @@ def shuffle(*objects, seed=0):
 
 def inplace_shuffle(*objects, seed=0):
     #Slower than shuffle, but uses no extra memory
-    rand = rnd.RandomState()
+    rand = randomgen.xoroshiro128.Xoroshiro128(seed).generator
     for x in objects:
         rand.seed(seed)
         rand.shuffle(x)
@@ -36,18 +35,18 @@ def inplace_shuffle_threaded(*objects, threads= 0, seed=0):
         pool.map(partial(inplace_shuffle, seed=seed), objects)
 
 def indlist2csrmatrix(indlist, datalist= None, shape= None):
-    #Convert a list indicator lists to a scipy.sparse.csr_matrix
+    #Convert a list of indicator lists to a scipy.sparse.csr_matrix
     indptr= [0]
     c= 0
     for x in indlist:
         c+= len(x)
         indptr.append(c)
     indices = list(itertools.chain.from_iterable(indlist))
-    if datalist!=None:
+    if datalist is not None:
         data= list(itertools.chain.from_iterable(datalist))
     else:
         data= np.ones(len(indices), dtype=np.float64)
-    if shape==None:  shape= (len(indlist), max(indices))
+    if shape==None:  shape= (len(indlist), max(indices)+1)
     X= ssp.csr_matrix((data, indices, indptr), shape=shape)
     return X
 
@@ -57,26 +56,26 @@ def indlist2csrmatrix(indlist, datalist= None, shape= None):
 # print(x)
 # print(y)
 #
-# with timer('process train'):
+# with timer('shuffle'):
 #     for z in range(10):
 #         x, y= shuffle(x,y)
 # print(x)
 # print(y)
 #
-# with timer('process train'):
+# with timer('inplace_shuffle'):
 #     for z in range(10):
 #         inplace_shuffle(x,y)
 # print(x)
 # print(y)
 #
-# with timer('process train'):
+# with timer('inplace_shuffle_threaded'):
 #     for z in range(10):
 #         inplace_shuffle_threaded(x,y)
 # print(x)
 # print(y)
 #
 # from sklearn.utils import shuffle as shuffle2
-# with timer('process train'):
+# with timer('sklearn_shuffle'):
 #     for z in range(10):
 #         x, y= shuffle2(x,y)
 # print(x)

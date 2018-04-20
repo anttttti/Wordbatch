@@ -103,10 +103,9 @@ class Batcher(object):
 			List of minibatches, each entry is a list-like object representing the data subset in a batch.
 		"""
 		if minibatch_size==None: minibatch_size= self.minibatch_size
-		data_type= type(data)
-		if data_type is list or data_type is tuple:  len_data= len(data)
+		if isinstance(data, list) or isinstance(data, tuple):  len_data= len(data)
 		else:  len_data= data.shape[0]
-		if data_type == pd.DataFrame:
+		if isinstance(data,pd.DataFrame):
 			data_split = [data.iloc[x * minibatch_size:(x + 1) * minibatch_size] for x in
 						  range(int(ceil(len_data / minibatch_size)))]
 		else:
@@ -128,7 +127,7 @@ class Batcher(object):
 			Single complete list-like data merged from given batches
 		"""
 		if isinstance(data[0], ssp.csr_matrix):  return ssp.vstack(data)
-		if isinstance(data[0], pd.DataFrame): return pd.concat(data)
+		if isinstance(data[0], pd.DataFrame) or isinstance(data[0], pd.Series):  return pd.concat(data)
 		return [item for sublist in data for item in sublist]
 
 	def parallelize_batches(self, task, data, args, method=None, timeout=-1, input_split=False,
