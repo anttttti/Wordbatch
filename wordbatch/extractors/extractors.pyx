@@ -5,7 +5,7 @@ from __future__ import division
 from __future__ import absolute_import
 from __future__ import print_function
 import types
-#from sklearn.utils.murmurhash import murmurhash3_32
+from sklearn.utils.murmurhash import murmurhash3_32
 from sklearn.feature_extraction.text import HashingVectorizer
 #from nltk.metrics import edit_distance
 import scipy.sparse as ssp
@@ -20,6 +20,7 @@ if sys.version_info.major == 3:
 else:
 	import copy_reg
 from wordbatch.data_utils import indlist2csrmatrix
+import wordbatch.transformers.dictionary
 from cpython cimport array
 cimport cython
 from libc.stdlib cimport abs
@@ -280,9 +281,12 @@ class WordVec:
 		fea_cfg.setdefault("merge_vectors", "mean")
 		fea_cfg.setdefault("normalize_merged", "l2")
 		fea_cfg.setdefault("encoding", "utf8")
+		fea_cfg.setdefault("shrink_model_transform", True)
 		for key, value in fea_cfg.items():  setattr(self, key.lower(), value)
-		self.w2v= self.load_w2v(fea_cfg["wordvec_file"], fea_cfg['encoding'])
+		if "w2v_model" in fea_cfg:  self.w2v= fea_cfg["w2v_model"]
+		else:  self.w2v= self.load_w2v(fea_cfg["wordvec_file"], fea_cfg['encoding'])
 		self.w2v_dim= len(list(self.w2v.values())[0])
+		self.fea_cfg= fea_cfg
 
 	def load_w2v(self, w2v_file, encoding= "ISO-8859-1"):
 		w2v= {}
@@ -335,10 +339,21 @@ class WordVec:
 			return vec
 		return vecs
 
-	def batch_transform(self, texts):  return [self.transform_single(text) for text in texts]
+	def batch_transform(self, texts):
+		return [self.transform_single(text) for text in texts]
 
 	def transform(self, texts, input_split= False, merge_output= True):
-		return self.batcher.parallelize_batches(batch_transform, texts, [self], input_split=input_split,
+		if self.fea_cfg['shrink_model_transform']== True:
+			#Send only word vectors occurring in texts to parallel processes.
+			#Use to reduce memory footprint with big embedding files.
+			d= wordbatch.transformers.dictionary.Dictionary(batcher=self.batcher, verbose=0, encode=False)\
+				.fit(texts, input_split=input_split)
+			w2v_model2= {x:self.w2v[x] for x in [z for z in self.w2v.keys() if z in d.dft]}
+			fea_cfg2= self.fea_cfg
+			fea_cfg2['w2v_model']= w2v_model2
+			self_shrunk= WordVec(batcher=self.batcher, dictionary=None, fea_cfg=fea_cfg2)
+		else:  self_shrunk= self
+		return self.batcher.parallelize_batches(batch_transform, texts, [self_shrunk], input_split=input_split,
 										   merge_output=merge_output, procs= int(self.batcher.procs / 2))
 
 	def fit(self):
@@ -380,9 +395,10 @@ class PandasHash:
 		return indlist2csrmatrix(
 			#indlist=np.array([np.vectorize(lambda x: hash(x) % D)(df[col].astype(str)+y)
 			#				  for col, y in zip(col_pick, col_salt)]).T,
-			indlist= np.array([[hash(x + y) % D for x in df[col].astype(str)] for col, y in zip(col_pick, col_salt)]).T,
-			datalist= [col_weight] * len(df),
-			shape= (len(df), D))
+			indlist= np.array([[murmurhash3_32(x + y) % D for x in df[col].astype(str)]
+							   for col, y in zip(col_pick, col_salt)]).T,
+								datalist= [col_weight] * len(df),
+								shape= (len(df), D))
 
 	def transform(self, texts, input_split= False, merge_output= True):
 		return self.batcher.parallelize_batches(batch_transform, texts, [self], input_split=input_split,

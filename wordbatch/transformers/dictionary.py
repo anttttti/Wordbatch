@@ -16,17 +16,20 @@ def batch_get_dfs(args):
 	return dft
 
 class Dictionary(object):
-	def __init__(self, batcher, min_df=0, max_df=1.0, max_words= 10000000000000, freeze= False, verbose=1):
+	def __init__(self, batcher, min_df=0, max_df=1.0, max_words= 10000000000000, freeze= False, encode=True, verbose=1):
 		self.verbose = verbose
 		self.freeze = freeze
 		self.max_words = max_words
 		self.min_df = min_df
 		self.max_df = max_df
 		self.batcher= batcher
+		self.encode= encode
+		self.word2id= None
 		self.reset()
 
+
 	def reset(self):
-		self.word2id = {}
+		if self.encode:  self.word2id = {}
 		self.dft = Counter()
 		self.doc_count = 0
 		return self
