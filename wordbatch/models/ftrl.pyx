@@ -21,7 +21,7 @@ cdef double inv_link_f(double e, int inv_link) nogil:
 	return e
 
 cdef double predict_single(int* inds, double* vals, int lenn, double L1, double baL2, double ialpha, double beta,
-				double[:] w, double[:] z, double[:] n, bint bias_term, int threads) nogil:
+				double* w, double* z, double* n, bint bias_term, int threads) nogil:
 	cdef int i, ii
 	cdef double sign, zi, wi
 	cdef double e= 0.0
@@ -36,13 +36,13 @@ cdef double predict_single(int* inds, double* vals, int lenn, double L1, double 
 		zi= z[i]
 		sign = -1.0 if zi < 0 else 1.0
 		if sign * zi  > L1:
-			wi= w[i] = (sign * L1 - zi) / (sqrt(n[i]) * ialpha + baL2)
+			w[ii+1]= wi= (sign * L1 - zi) / (sqrt(n[i]) * ialpha + baL2)
 			e+= wi * vals[ii]
-		else:  w[i] = 0.0
+		else:  w[ii+1]= 0.0
 	return e
 
-cdef void update_single(int* inds, double* vals, int lenn, double e, double ialpha, double[:] w, double[:] z,
-						double[:] n, bint bias_term, int threads) nogil:
+cdef void update_single(int* inds, double* vals, int lenn, double e, double ialpha, double* w, double* z,
+						double* n, bint bias_term, int threads) nogil:
 	cdef int i, ii
 	cdef double g, g2, ni
 	if bias_term:
@@ -56,7 +56,7 @@ cdef void update_single(int* inds, double* vals, int lenn, double e, double ialp
 		g= e * vals[ii]
 		g2= g ** 2
 		ni= n[i]
-		z[i]+= g - ((sqrt(ni + g2) - sqrt(ni)) * ialpha) * w[i]
+		z[i]+= g - ((sqrt(ni + g2) - sqrt(ni)) * ialpha) * w[ii+1]
 		n[i]+= g2
 
 cdef class FTRL:
@@ -122,7 +122,7 @@ cdef class FTRL:
 					np.ndarray[int, ndim=1, mode='c'] X_indptr, int threads):
 		cdef double ialpha= 1.0/self.alpha, L1= self.L1, beta= self.beta, baL2= beta * ialpha + self.L2
 		p= np.zeros(X_indptr.shape[0]-1, dtype= np.float64)
-		cdef double[:] w= self.w, z= self.z, n= self.n
+		cdef double *w= &self.w[0], *z= &self.z[0], *n= &self.n[0]
 		cdef double[:] pp= p
 		cdef int lenn, row_count= X_indptr.shape[0]-1, row, ptr
 		cdef bint bias_term= self.bias_term
@@ -135,24 +135,29 @@ cdef class FTRL:
 											   bias_term, threads), self.inv_link)
 		return p
 
-	def partial_fit(self, X, y, int threads = 0):
-		return self.fit(X, y, threads = threads, reset= False)
+	def partial_fit(self, X, y, sample_weight= None, int threads = 0):
+		return self.fit(X, y, sample_weight= sample_weight, threads = threads, reset= False)
 
-	def fit(self, X, y, int threads= 0, reset= True):
+	def fit(self, X, y, sample_weight= None, int threads= 0, reset= True):
 		if reset:  self.reset()
 		if threads == 0:  threads= self.threads
 		if type(X) != ssp.csr.csr_matrix:  X = ssp.csr_matrix(X, dtype=np.float64)
-		if type(y) != np.array:  y = np.array(y, dtype=np.float64)
+		#if type(y) != np.array:  y = np.array(y, dtype=np.float64)
+		y= np.ascontiguousarray(y, dtype=np.float64)
+		if sample_weight is not None and type(sample_weight) != np.array:
+			sample_weight= np.array(sample_weight, dtype=np.float64)
 		# self.fit_f(X, np.ascontiguousarray(X.data), np.ascontiguousarray(X.indices),
 		#           np.ascontiguousarray(X.indptr), y, threads)
-		return self.fit_f(X.data, X.indices, X.indptr, y, threads)
+		return self.fit_f(X.data, X.indices, X.indptr, y, sample_weight, threads)
 
 	def fit_f(self, np.ndarray[double, ndim=1, mode='c'] X_data,
 					np.ndarray[int, ndim=1, mode='c'] X_indices,
-					np.ndarray[int, ndim=1, mode='c'] X_indptr, y, int threads):
+					np.ndarray[int, ndim=1, mode='c'] X_indptr,
+					np.ndarray[double, ndim=1, mode='c'] y,
+					sample_weight, int threads):
 		cdef double ialpha= 1.0/self.alpha, L1= self.L1, beta= self.beta, baL2= beta * ialpha + self.L2, e, e_total= 0,\
 					e_clip= self.e_clip, abs_e
-		cdef double[:] w= self.w, z= self.z, n= self.n, ys= y
+		cdef double *w= &self.w[0], *z= &self.z[0], *n= &self.n[0], *ys= <double*> y.data
 		cdef unsigned int lenn, ptr, row_count= X_indptr.shape[0]-1, row, inv_link= self.inv_link, j=0, jj
 		cdef bint bias_term= self.bias_term
 		cdef int* inds, indptr
@@ -172,6 +177,8 @@ cdef class FTRL:
 				if abs_e> e_clip:
 					if e>0:  e= e_clip
 					else:  e= -e_clip
+				if sample_weight is not None:
+					e*= sample_weight[row]
 				update_single(inds, vals, lenn, e, ialpha, w, z, n, bias_term, threads)
 			if self.verbose > 0:  print "Total e:", e_total
 		return self
@@ -185,8 +192,9 @@ cdef class FTRL:
 
 	def __getstate__(self):
 		return (self.alpha, self.beta, self.L1, self.L2, self.e_clip, self.D, self.iters,
-				np.asarray(self.w), np.asarray(self.z), np.asarray(self.n), self.inv_link, self.verbose)
+				np.asarray(self.w), np.asarray(self.z), np.asarray(self.n), self.inv_link, self.threads, self.bias_term,
+				self.verbose)
 
 	def __setstate__(self, params):
 		(self.alpha, self.beta, self.L1, self.L2, self.e_clip, self.D,
-		 self.iters, self.w, self.z, self.n, self.inv_link, self.verbose)= params
+		 self.iters, self.w, self.z, self.n, self.inv_link, self.threads, self.bias_term, self.verbose)= params

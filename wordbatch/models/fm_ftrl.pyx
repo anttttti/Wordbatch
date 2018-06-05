@@ -223,7 +223,6 @@ cdef class FM_FTRL:
 		if type(X) != ssp.csr.csr_matrix:  X = ssp.csr_matrix(X, dtype=np.float64)
 		#if type(y) != np.array:  y = np.array(y, dtype=np.float64)
 		y= np.ascontiguousarray(y, dtype=np.float64)
-
 		if sample_weight is not None and type(sample_weight) != np.array:
 			sample_weight= np.array(sample_weight, dtype=np.float64)
 		return self.fit_f(X.data, X.indices, X.indptr, y, sample_weight, threads, seed)
@@ -314,6 +313,7 @@ cdef class FM_FTRL:
 				self.seed,
 				self.use_avx,
 				self.bias_term,
+				self.threads,
 				self.verbose)
 
 	def __setstate__(self, params):
@@ -340,4 +340,5 @@ cdef class FM_FTRL:
 		 self.seed,
 		 self.use_avx,
 		 self.bias_term,
+		 self.threads,
 		 self.verbose)= params

@@ -384,7 +384,16 @@ class PandasHash:
 	def __init__(self, batcher, dictionary, fea_cfg):
 		self.batcher= batcher
 		self.dictionary= dictionary
+		self.col_salt= None
+		self.col_weight= None
+		self.col_pick= []
+		#self.col_type= []
 		for key, value in fea_cfg.items():  setattr(self, key.lower(), value)
+		if self.col_salt is None:
+			self.col_salt = ["".join([z[0] for z in x.replace(" ", "_").replace("|", "_").split("_")])
+			            for x in self.col_pick]
+		if self.col_weight is None:  self.col_weight = np.ones(len(self.col_pick))
+		#if self.col_type is None:  self.col_type = ["cat"]*len(self.col_pick)
 
 	def batch_transform(self, df):
 		D= self.n_features
