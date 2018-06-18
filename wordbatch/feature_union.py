@@ -132,7 +132,7 @@ class FeatureUnion(_BaseComposition, TransformerMixin):
         self._validate_transformers()
         with Pool(self.n_jobs) as pool:
             transformers = pool.starmap(_fit_one_transformer,
-                        ((trans, X[trans.cols] if hasattr(trans, 'cols') else X, y) for _, trans, _ in self._iter()))
+                        ((trans, X[trans['col_pick']] if hasattr(trans, 'col_pick') else X, y) for _, trans, _ in self._iter()))
         self._update_transformer_list(transformers)
         return self
 
@@ -156,8 +156,8 @@ class FeatureUnion(_BaseComposition, TransformerMixin):
         self._validate_transformers()
         with Pool(self.n_jobs) as pool:
             result = pool.starmap(_fit_transform_one,
-                         ((trans, weight, X[trans.cols] if hasattr(trans, 'cols') else X, y) for name, trans, weight in
-                                  self._iter()))
+                         ((trans, weight, X[trans['col_pick']] if hasattr(trans, 'col_pick') else X, y)
+                          for name, trans, weight in self._iter()))
         if not result:
             # All transformers are None
             return np.zeros((X.shape[0], 0))
@@ -185,8 +185,8 @@ class FeatureUnion(_BaseComposition, TransformerMixin):
             sum of n_components (output dimension) over transformers.
         """
         with Pool(self.n_jobs) as pool:
-            Xs = pool.starmap(_transform_one, ((trans, weight, X[trans.cols] if hasattr(trans, 'cols') else X)
-                for name, trans, weight in self._iter()))
+            Xs = pool.starmap(_transform_one, ((trans, weight, X[trans['col_pick']] if hasattr(trans, 'col_pick')
+                    else X) for name, trans, weight in self._iter()))
         if not Xs:
             # All transformers are None
             return np.zeros((X.shape[0], 0))

@@ -13,6 +13,7 @@ if sys.version_info.major == 3:
 	import pickle as pkl
 else:
 	import cPickle as pkl
+import randomgen
 
 np.import_array()
 
@@ -71,9 +72,11 @@ cdef class FTRL:
 	cdef double L2
 	cdef double alpha
 	cdef double beta
+	cdef double init
 	cdef double e_clip
 	cdef int inv_link
 	cdef bint bias_term
+	cdef int seed
 	cdef int verbose
 
 	def __init__(self,
@@ -82,17 +85,20 @@ cdef class FTRL:
 				 double L1=1.0,
 				 double L2=1.0,
 				 unsigned int D=2**25,
+				 double init= 0.0,
 				 unsigned int iters=10,
 				 double e_clip= 1.0,
 				 int threads= 0,
 				 inv_link= "sigmoid",
 				 bint bias_term=1,
+                 int seed= 0,
 				 int verbose=1):
 
 		self.alpha= alpha
 		self.beta= beta
 		self.L1= L1
 		self.L2= L2
+		self.init= init
 		self.e_clip= e_clip
 		self.D= D
 		self.iters= iters
@@ -101,13 +107,18 @@ cdef class FTRL:
 		if inv_link=="sigmoid":  self.inv_link= 1
 		if inv_link=="identity":  self.inv_link= 0
 		self.bias_term= bias_term
+		self.seed = seed
 		self.verbose= verbose
 		self.reset()
 
 	def reset(self):
 		D= self.D
 		self.w = np.zeros((D,), dtype=np.float64)
-		self.z = np.zeros((D,), dtype=np.float64)
+		if self.init==0:
+			self.z = np.zeros((D,), dtype=np.float64)
+		else:
+			rand= randomgen.xoroshiro128.Xoroshiro128(seed= self.seed).generator
+			self.z = (rand.random_sample(D) - 0.5) * self.init
 		self.n = np.zeros((D,), dtype=np.float64)
 
 	def predict(self, X, int threads= 0):
@@ -191,10 +202,10 @@ cdef class FTRL:
 		self.set_params(pkl.load(gzip.open(filename, 'rb')))
 
 	def __getstate__(self):
-		return (self.alpha, self.beta, self.L1, self.L2, self.e_clip, self.D, self.iters,
+		return (self.alpha, self.beta, self.L1, self.L2, self.e_clip, self.D, self.init, self.seed, self.iters,
 				np.asarray(self.w), np.asarray(self.z), np.asarray(self.n), self.inv_link, self.threads, self.bias_term,
 				self.verbose)
 
 	def __setstate__(self, params):
-		(self.alpha, self.beta, self.L1, self.L2, self.e_clip, self.D,
+		(self.alpha, self.beta, self.L1, self.L2, self.e_clip, self.D, self.init, self.seed,
 		 self.iters, self.w, self.z, self.n, self.inv_link, self.threads, self.bias_term, self.verbose)= params

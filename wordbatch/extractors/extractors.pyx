@@ -98,6 +98,7 @@ class WordBag:
 		fea_cfg.setdefault("seed", 0)
 		for key, value in fea_cfg.items():  setattr(self, key.lower(), value)
 		if self.hash_ngrams_weights==None: self.hash_ngrams_weights= [1.0 for x in range(self.hash_ngrams)]
+		if self.hash_ngrams== 0: self.hash_size= self.dictionary.max_words
 
 	def transform_single(self, text):
 		dft= self.dictionary.dft
@@ -122,7 +123,7 @@ class WordBag:
 			word= text[x]
 			if len(word2id)!=0:
 				word_id = word2id.get(word, -1)
-				if word_id == -1:  continue
+				if word_id == -1 or word_id>= fc_hash_size:  continue
 			df= dft.get(word, 0)
 			if use_idf:
 				if df == 0:  continue
@@ -157,10 +158,8 @@ class WordBag:
 					textrow.append(abs(hashed) % fc_hash_size, (hashed >= 0) * 2 - 1, weight)
 
 		cdef np.int32_t size= len(textrow.data)
-		cdef int rowdim= fc_hash_size if (fc_hash_ngrams!=0 or fc_hash_polys_window!=0) else self.dictionary.max_words
-
 		wordbag= ssp.csr_matrix((textrow.data, textrow.indices, array.array("i", ([0, size]))),
-								 shape=(1, rowdim), dtype=np.float64)
+								 shape=(1, fc_hash_size), dtype=np.float64)
 		wordbag.sum_duplicates()
 
 		if fc_tf== 'log':  wordbag.data= np.log(1.0+np.abs(wordbag.data)) *np.sign(wordbag.data)

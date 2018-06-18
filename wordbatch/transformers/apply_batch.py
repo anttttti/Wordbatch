@@ -11,7 +11,9 @@ def batch_apply(args):
     return f(args[0], *f_args, **f_kwargs)
 
 class ApplyBatch(object):
-    #Applies a function to the entire minibatch
+    #Applies a function to the entire minibatch. Use this for example on Pandas dataframes, to avoid per-row overhead.
+    #Function needs to be applicable to the array/list of values!
+    #If not, modify/wrap the function to process a list, or use Apply
     def __init__(self, batcher, function, args=[], kwargs={}):
         self.batcher= batcher
         self.function= function
