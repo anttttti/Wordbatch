@@ -5,15 +5,11 @@ import numpy
 import os
 
 if os.name == 'nt':
-	extra_compile_args = ["/openmp", "/Ox", "/arch:AVX2", "/fp:fast"]
-	extra_link_args = []
-	extra_compile_avx2_args = ["/arch:AVX2"]
-	extra_link_avx2_args = []
+    extra_compile_args = ["/openmp", "/Ox", "/arch:AVX2", "/fp:fast"]
+    extra_link_args = []
 else:
-	extra_compile_args = ["-O3", "-fopenmp", "-ffast-math", "-march=native", "-ftree-vectorize", "-std=gnu11"]
-	extra_link_args = ["-fopenmp"]
-	extra_compile_avx2_args = []
-	extra_link_avx2_args = ["-mavx2"]
+    extra_compile_args = ["-O3", "-fopenmp", "-ffast-math", "-mavx2", "-march=native", "-ftree-vectorize", "-std=gnu11"]
+    extra_link_args = ["-fopenmp"]
 
 setup(
 	name='Wordbatch',
@@ -62,8 +58,8 @@ setup(
 							["wordbatch/models/fm_ftrl.pyx", "wordbatch/models/avx_ext.c"],
 							libraries= [],
 							include_dirs=[numpy.get_include(), '.'],
-							extra_compile_args = extra_compile_args + extra_compile_avx2_args,
-							extra_link_args=extra_link_args + extra_link_avx2_args),
+							extra_compile_args = extra_compile_args,
+							extra_link_args=extra_link_args),
 				  Extension("wordbatch.models.nn_relu_h1",
 							["wordbatch/models/nn_relu_h1.pyx"],
 							libraries= [],
