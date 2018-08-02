@@ -3,6 +3,7 @@ from __future__ import with_statement
 from __future__ import division
 from __future__ import absolute_import
 from __future__ import print_function
+import dill
 import multiprocessing
 import types
 from contextlib import closing
@@ -11,19 +12,6 @@ import random
 import pandas as pd
 import sys
 from math import ceil
-if sys.version_info.major == 3:
-	import copyreg as copy_reg
-else:
-	import copy_reg
-
-def _pickle_method(m):
-	if sys.version_info.major == 3:
-		if m.im_self is None:  return getattr, (m.im_self.__class__, m.im_func.__name__)
-		else:  return getattr, (m.im_self, m.im_func.__name__)
-	else:
-		if m.__self__ is None:  return getattr, (m.__self__.__class__, m.__func__.__name__)
-		else:  return getattr, (m.__self__, m.__func__.__name__)
-copy_reg.pickle(types.MethodType, _pickle_method)
 
 class Batcher(object):
 	"""Scheduler to handle parallel jobs on minibatches

@@ -15,10 +15,6 @@ import gzip
 import lz4framed
 import array
 import sys
-if sys.version_info.major == 3:
-	import copyreg as copy_reg
-else:
-	import copy_reg
 from wordbatch.data_utils import indlist2csrmatrix
 import wordbatch.transformers.dictionary
 from cpython cimport array
@@ -36,15 +32,6 @@ cpdef np.int32_t murmurhash3_bytes_s32(bytes key, unsigned int seed= 0):
 	cdef np.int32_t out
 	MurmurHash3_x86_32(<char*> key, len(key), seed, &out)
 	return out
-
-def _pickle_method(m):
-	if sys.version_info.major == 3:
-		if m.im_self is None:  return getattr, (m.im_self.__class__, m.im_func.__name__)
-		else:  return getattr, (m.im_self, m.im_func.__name__)
-	else:
-		if m.__self__ is None:  return getattr, (m.__self__.__class__, m.__func__.__name__)
-		else:  return getattr, (m.__self__, m.__func__.__name__)
-copy_reg.pickle(types.MethodType, _pickle_method)
 
 def save_to_lz4(file, input, dtype, level= 0):
 	with open(file, 'wb') as f:  f.write(lz4framed.compress(np.array(input, dtype=dtype).tostring(), level))
@@ -281,13 +268,14 @@ class WordVec:
 		fea_cfg.setdefault("normalize_merged", "l2")
 		fea_cfg.setdefault("encoding", "utf8")
 		fea_cfg.setdefault("shrink_model_transform", True)
+		fea_cfg.setdefault("w2v_dim", None)
 		for key, value in fea_cfg.items():  setattr(self, key.lower(), value)
 		if "w2v_model" in fea_cfg:  self.w2v= fea_cfg["w2v_model"]
-		else:  self.w2v= self.load_w2v(fea_cfg["wordvec_file"], fea_cfg['encoding'])
+		else:  self.w2v= self.load_w2v(fea_cfg["wordvec_file"], fea_cfg['encoding'], fea_cfg['w2v_dim'])
 		self.w2v_dim= len(list(self.w2v.values())[0])
 		self.fea_cfg= fea_cfg
 
-	def load_w2v(self, w2v_file, encoding= "ISO-8859-1"):
+	def load_w2v(self, w2v_file, encoding= "ISO-8859-1", w2v_dim= None):
 		w2v= {}
 		from collections import Counter
 		w2v_counts= Counter()
@@ -296,6 +284,9 @@ class WordVec:
 			line= line.decode(encoding).strip().split(" ", 1)
 			vec= np.array([np.float64(x) for x in line[1].split(" ")])
 			if len(vec)<2: continue
+			if w2v_dim is not None and len(vec)!=w2v_dim:
+				print("Wrong vector length", len(vec),", should be:", w2v_dim, ":", line)
+				continue
 			word= line[0]
 			if self.normalize_text!=None:  word= self.normalize_text(word)
 			if self.stemmer!=None:  word= self.stemmer.stem(word)
