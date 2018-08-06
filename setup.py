@@ -37,7 +37,7 @@ setup(
 		"Topic :: Software Development :: Libraries :: Python Modules",
 	],
 	install_requires=['cython', 'scikit-learn', 'python-Levenshtein', 'py-lz4framed', 'randomgen', 'numpy', 'scipy',
-					  'pandas'],
+					  'pandas', 'dill'],
 	extras_require={'dev': ['nltk', 'textblob', 'keras', 'pyspark']},
 
 
