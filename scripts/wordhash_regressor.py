@@ -11,6 +11,7 @@ import wordbatch
 from wordbatch.extractors import WordHash
 from wordbatch.models import FM_FTRL
 import threading
+import multiprocessing
 import sys
 if sys.version_info.major == 3:
 	import pickle as pkl
@@ -39,7 +40,7 @@ class WordhashRegressor(object):
 		self.wb= wordbatch.WordBatch(normalize_text, stemmer= stemmer,
 										 extractor=(WordHash, {"decode_error":'ignore', "n_features":2 ** 25,
 										 "non_negative":False, "ngram_range":(1,2), "norm":'l2'}))
-		self.clf = FM_FTRL(D=2 ** 25, D_fm= 4, iters=1, inv_link="identity", threads= 4)
+		self.clf = FM_FTRL(D=2 ** 25, D_fm= 4, iters=1, inv_link="identity", threads= multiprocessing.cpu_count()//2)
 		if datadir==None:  (self.wb, self.clf)= pkl.load(gzip.open(pickle_model, 'rb'))
 		else: self.train(datadir, pickle_model)
 

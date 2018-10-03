@@ -3,11 +3,12 @@ import numpy as np
 import scipy as sp
 import re
 import sklearn
-from sklearn.cross_validation import *
+from sklearn.model_selection import *
 from sklearn.ensemble import RandomForestRegressor
 import textblob
 from math import *
 import time, datetime
+import multiprocessing
 
 tripadvisor_dir= "../../../data/tripadvisor/json"
 if __name__ == "__main__":
@@ -40,24 +41,28 @@ if __name__ == "__main__":
     wb_regressor= wordbag_regressor.WordbagRegressor("../models/wordbag_model.pkl.gz", tripadvisor_dir)
     #wb_regressor= wordbag_regressor.WordbagRegressor("../models/wordbag_model.pkl.gz")
     df['wordbag_score']= wb_regressor.predict(df['text'].values)
+    print(("%s minutes ---" % round(((time.time() - start_time) / 60), 2)))
 
     import wordhash_regressor
     print("Train wordhash regressor")
     wh_regressor= wordhash_regressor.WordhashRegressor("../models/wordhash_model.pkl.gz", tripadvisor_dir)
     #wh_regressor= wordhash_regressor.WordhashRegressor("../models/wordhash_model.pkl.gz")
     df['wordhash_score']= wh_regressor.predict(df['text'].values)
+    print(("%s minutes ---" % round(((time.time() - start_time) / 60), 2)))
 
     import wordseq_regressor
     print("Train wordseq regressor")
     ws_regressor = wordseq_regressor.WordseqRegressor("../models/wordseq_model.pkl.gz", tripadvisor_dir)
     #ws_regressor = wordseq_regressor.WordseqRegressor("../models/wordseq_model.pkl.gz")
     df['wordseq_score']= ws_regressor.predict_batch(df['text'].values)
+    print(("%s minutes ---" % round(((time.time() - start_time) / 60), 2)))
 
     import wordvec_regressor
     print("Train wordvec regressor")
     wv_regressor= wordvec_regressor.WordvecRegressor("../models/wordvec_model.pkl.gz", tripadvisor_dir)
     #wv_regressor= wordvec_regressor.WordvecRegressor("../models/wordvec_model.pkl.gz")
     df['wordvec_score'] = wv_regressor.predict(df['text'].values)
+    print(("%s minutes ---" % round(((time.time() - start_time) / 60), 2)))
 
     df['tweet_len']= df['text'].map(lambda x: log(1+len(x)))
     df['tweet_wordcount']= df['text'].map(lambda x: log(1+len(x.split())))
@@ -70,13 +75,14 @@ if __name__ == "__main__":
     #columns_pick= ['tweet_len', 'tweet_wordcount', 'wordbag_score', 'wordhash_score', 'wordvec_score', 'textblob_score'] #
     #columns_pick= ['tweet_len', 'tweet_wordcount', 'wordbag_score', 'wordhash_score', 'wordseq_score', 'textblob_score'] #
 
-    kf= KFold(df.shape[0], n_folds=10, shuffle=True, random_state=0)
-    for train_index, dev_index in kf:
+    kf= KFold(n_splits=10, shuffle=True, random_state=0)
+    for train_index, dev_index in kf.split(range(df.shape[0])):
         df_train= df.ix[train_index]
         df_dev= df.ix[dev_index]
         clf= RandomForestRegressor(n_estimators=200, criterion='mse', max_depth=None, min_samples_split=5,
                                    min_samples_leaf=2, min_weight_fraction_leaf=0.0, max_features='auto',
-                                   max_leaf_nodes=None, bootstrap=True, oob_score=False, n_jobs=8, random_state=0,
+                                   max_leaf_nodes=None, bootstrap=True, oob_score=False,
+                                   n_jobs=multiprocessing.cpu_count(), random_state=0,
                                    verbose=0, warm_start=False)
 
         clf.fit(df_train[columns_pick], df_train['sentiment'])

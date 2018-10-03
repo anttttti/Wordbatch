@@ -16,6 +16,7 @@ import random
 import threading
 from keras.models import load_model
 import tensorflow as tf
+import multiprocessing
 
 non_alphas = re.compile('[^A-Za-z\'-]+')
 trash_re= [re.compile("<[^>]*>"), re.compile("[^a-z0-9' -]+"), re.compile(" [.0-9'-]+ "),
@@ -35,7 +36,8 @@ class BatchData(object):
 class WordseqRegressor():
     def __init__(self, pickle_model="", datadir=None):
         seed = 10002
-        session_conf = tf.ConfigProto(intra_op_parallelism_threads=5, inter_op_parallelism_threads=1)
+        session_conf = tf.ConfigProto(intra_op_parallelism_threads=multiprocessing.cpu_count()//2,
+                                      inter_op_parallelism_threads=1)
         os.environ['PYTHONHASHSEED'] = str(seed)
         np.random.seed(seed + 1)
         random.seed(seed + 2)
