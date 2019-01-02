@@ -9,10 +9,6 @@ from cython.parallel import prange
 from libc.math cimport exp, log, fmax, fmin, sqrt, fabs
 import multiprocessing
 import sys
-if sys.version_info.major == 3:
-	import pickle as pkl
-else:
-	import cPickle as pkl
 import randomgen
 
 np.import_array()
@@ -22,7 +18,7 @@ cdef double inv_link_f(double e, int inv_link) nogil:
 	return e
 
 cdef double predict_single(int* inds, double* vals, int lenn, double L1, double baL2, double ialpha, double beta,
-				double* w, double* z, double* n, bint bias_term, int threads) nogil:
+				double* w, double* z, double* n, bint bias_term, int threads):# nogil:
 	cdef int i, ii
 	cdef double sign, zi, wi
 	cdef double e= 0.0
@@ -33,13 +29,15 @@ cdef double predict_single(int* inds, double* vals, int lenn, double L1, double 
 		else:  w[0] = 0.0
 
 	for ii in prange(lenn, nogil=True, num_threads= threads):
-		i= inds[ii]
+		i= inds[ii]+1
 		zi= z[i]
 		sign = -1.0 if zi < 0 else 1.0
 		if sign * zi  > L1:
-			w[ii+1]= wi= (sign * L1 - zi) / (sqrt(n[i]) * ialpha + baL2)
+			#w[ii+1]= wi= (sign * L1 - zi) / (sqrt(n[i]) * ialpha + baL2)
+			w[i]= wi= (sign * L1 - zi) / (sqrt(n[i]) * ialpha + baL2)
 			e+= wi * vals[ii]
-		else:  w[ii+1]= 0.0
+		#else:  w[ii+1]= 0.0
+		else:  w[i]= 0.0
 	return e
 
 cdef void update_single(int* inds, double* vals, int lenn, double e, double ialpha, double* w, double* z,
@@ -53,11 +51,12 @@ cdef void update_single(int* inds, double* vals, int lenn, double e, double ialp
 		n[0]+= g2
 
 	for ii in prange(lenn, nogil=True, num_threads= threads):
-		i= inds[ii]
+		i= inds[ii]+1
 		g= e * vals[ii]
 		g2= g ** 2
 		ni= n[i]
-		z[i]+= g - ((sqrt(ni + g2) - sqrt(ni)) * ialpha) * w[ii+1]
+		#z[i]+= g - ((sqrt(ni + g2) - sqrt(ni)) * ialpha) * w[ii+1]
+		z[i]+= g - ((sqrt(ni + g2) - sqrt(ni)) * ialpha) * w[i]
 		n[i]+= g2
 
 cdef class FTRL:
@@ -91,7 +90,7 @@ cdef class FTRL:
 				 int threads= 0,
 				 inv_link= "sigmoid",
 				 bint bias_term=1,
-                 int seed= 0,
+				 int seed= 0,
 				 int verbose=1):
 
 		self.alpha= alpha
@@ -113,13 +112,13 @@ cdef class FTRL:
 
 	def reset(self):
 		D= self.D
-		self.w = np.zeros((D,), dtype=np.float64)
+		self.w = np.zeros((D+1,), dtype=np.float64)
 		if self.init==0:
-			self.z = np.zeros((D,), dtype=np.float64)
+			self.z = np.zeros((D+1,), dtype=np.float64)
 		else:
 			rand= randomgen.xoroshiro128.Xoroshiro128(seed= self.seed).generator
-			self.z = (rand.random_sample(D) - 0.5) * self.init
-		self.n = np.zeros((D,), dtype=np.float64)
+			self.z = (rand.random_sample(D+1) - 0.5) * self.init
+		self.n = np.zeros((D+1,), dtype=np.float64)
 
 	def predict(self, X, int threads= 0):
 		if threads==0:  threads= self.threads
@@ -152,7 +151,8 @@ cdef class FTRL:
 	def fit(self, X, y, sample_weight= None, int threads= 0, reset= True):
 		if reset:  self.reset()
 		if threads == 0:  threads= self.threads
-		if type(X) != ssp.csr.csr_matrix:  X = ssp.csr_matrix(X, dtype=np.float64)
+		if type(X) != ssp.csr.csr_matrix:
+			X = ssp.csr_matrix(X, dtype=np.float64)
 		#if type(y) != np.array:  y = np.array(y, dtype=np.float64)
 		y= np.ascontiguousarray(y, dtype=np.float64)
 		if sample_weight is not None and type(sample_weight) != np.array:
@@ -193,13 +193,6 @@ cdef class FTRL:
 				update_single(inds, vals, lenn, e, ialpha, w, z, n, bias_term, threads)
 			if self.verbose > 0:  print "Total e:", e_total
 		return self
-
-	def pickle_model(self, filename):
-		with gzip.open(filename, 'wb') as model_file:
-			pkl.dump(self.get_params(), model_file, protocol=2)
-
-	def unpickle_model(self, filename):
-		self.set_params(pkl.load(gzip.open(filename, 'rb')))
 
 	def __getstate__(self):
 		return (self.alpha, self.beta, self.L1, self.L2, self.e_clip, self.D, self.init, self.seed, self.iters,

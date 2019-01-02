@@ -11,11 +11,6 @@ import multiprocessing
 import sys
 import randomgen
 
-if sys.version_info.major == 3:
-	import pickle as pkl
-else:
-	import cPickle as pkl
-
 np.import_array()
 
 cdef double inv_link_f(double e, int inv_link) nogil:
@@ -229,15 +224,6 @@ cdef class NN_ReLU_H2:
 			if layer==1:  predict_single(inds, vals, lenn, D, D_nn, D_nn2, w0, w1, w2, &pp[row][0], z2, threads)
 			else:  predict_single(inds, vals, lenn, D, D_nn, D_nn2, w0, w1, w2, z1, &pp[row][0], threads)
 		return p
-
-
-	def pickle_model(self, filename):
-		with gzip.open(filename, 'wb') as model_file:
-			pkl.dump(self.get_params(), model_file, protocol=2)
-
-
-	def unpickle_model(self, filename):
-		self.set_params(pkl.load(gzip.open(filename, 'rb')))
 
 	def __getstate__(self):
 		return (self.alpha,

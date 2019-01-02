@@ -190,6 +190,7 @@ class Batcher(object):
 			paral_params= [[data_batch]+ args for data_batch in self.split_batches(data, minibatch_size)]
 		else:
 			paral_params=  [[data_batch]+ args for data_batch in data]
+		if self.verbose > 1:  print("Start task, len(paral_params)", len(paral_params))
 		if method == "serial":
 			results = [task(minibatch) for minibatch in paral_params]
 		else:

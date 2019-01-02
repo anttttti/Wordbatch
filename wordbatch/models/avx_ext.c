@@ -33,14 +33,14 @@ double predict_fm_ftrl_avx(const int* inds, double* vals, int lenn, double L1, d
     #endif
     */
     for (ii = 0; ii < lenn; ii++) {
-        const int i = inds[ii];
+        const int i = inds[ii]+1;
         const double zi = z[i];
         const double sign = (zi < 0) ? -1.0 : 1.0;
         if (sign * zi > L1) {
             const double wi = (sign * L1 - zi) / (sqrt(n[i]) * ialpha + baL2);
-            w[ii + 1] = wi;
+            w[i] = wi;
             e += wi * vals[ii];
-        } else w[ii + 1] = 0.0;
+        } else w[i] = 0.0;
     }
 
     int num_thread = 1;
@@ -76,11 +76,10 @@ double predict_fm_ftrl_avx(const int* inds, double* vals, int lenn, double L1, d
 
         double* pAcwfmk = acwfmk + i_thread * D_fm;
         double* wi2_acck = wi2_acc + i_thread * 4;
-        const int i = inds[ii];
+        const int i = inds[ii]+1;
         double v = vals[ii];
-        const int iD_fm = i * D_fm;
         int k = 0;
-        double* z_fmik = z_fm + iD_fm;
+        double* z_fmik = z_fm + (i-1) * D_fm;
         double* w_fmk = pAcwfmk;
 
         #ifdef USE_AVX2
@@ -143,16 +142,16 @@ void update_fm_ftrl_avx(const int* inds, double* vals, int lenn, const double e,
     #pragma omp parallel for num_threads(num_thread) private(ii)
     #endif
     for (ii = 0; ii < lenn; ii++) {
-        const int i = inds[ii];
+        const int i = inds[ii]+1;
         const double v = vals[ii];
         const double g = e * v;
         const double g2 = g * g;
         const double ni = n[i];
 
-        z[i] += g - ((sqrt(ni + g2) - sqrt(ni)) * ialpha) * w[ii + 1];
+        z[i] += g - ((sqrt(ni + g2) - sqrt(ni)) * ialpha) * w[i];
         n[i] += g2;
 
-        double* z_fmik = z_fm + i * D_fm;
+        double* z_fmik = z_fm + (i-1) * D_fm;
         double* w_fmk = w_fm;
         const double lr = g* alpha_fm / (sqrt(n_fm[i]) + 1.0);
         const double reg = v - L2_fme;

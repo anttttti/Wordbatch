@@ -11,11 +11,6 @@ import multiprocessing
 import sys
 import randomgen
 
-if sys.version_info.major == 3:
-	import pickle as pkl
-else:
-	import cPickle as pkl
-
 np.import_array()
 
 cdef extern from "avx_ext.h":# nogil:
@@ -44,11 +39,11 @@ cdef double predict_single(int* inds, double* vals, int lenn, double L1, double 
 		else:  w[0] = 0.0
 
 	for ii in prange(lenn, nogil=True, num_threads= threads):
-		i= inds[ii]
+		i= inds[ii]+1
 		zi= z[i]
 		sign= -1.0 if zi < 0 else 1.0
 		if sign * zi  > L1:
-			w[ii+1]= wi= (sign * L1 - zi) / (sqrt(n[i]) * ialpha + baL2)
+			w[i]= wi= (sign * L1 - zi) / (sqrt(n[i]) * ialpha + baL2)
 			e+= wi * vals[ii]
 		else:  w[ii+1] = 0.0
 
@@ -78,17 +73,17 @@ cdef void update_single(int* inds, double* vals, int lenn, double e, double ialp
 
 	for ii in prange(lenn, nogil=True, num_threads= threads):
 	#for ii in range(lenn):
-		i= inds[ii]
+		i= inds[ii]+1
 		v= vals[ii]
 		#Update 1st order model with FTRL-proximal
 		g= e * v
 		g2= g * g
 		ni= n[i]
-		z[i]+= g - ((sqrt(ni + g2) - sqrt(ni)) * ialpha) * w[ii+1]
+		z[i]+= g - ((sqrt(ni + g2) - sqrt(ni)) * ialpha) * w[i]
 		n[i]+= g2
 
 		#Update FM with adaptive regularized SGD
-		z_fmi= z_fm+ i * D_fm
+		z_fmi= z_fm+ (i-1) * D_fm
 		lr= g* alpha_fm / (sqrt(n_fm[i])+1.0)
 		reg= v - L2_fme
 		for k in range(D_fm):  z_fmi[k]-= lr * (w_fm[k] - z_fmi[k] * reg)
@@ -169,13 +164,13 @@ cdef class FM_FTRL:
 	def reset(self):
 		D= self.D
 		D_fm= self.D_fm
-		self.w = np.ones((D), dtype=np.float64)
-		self.z = np.zeros((D), dtype=np.float64)
-		self.n = np.zeros((D), dtype=np.float64)
+		self.w = np.ones((D+1), dtype=np.float64)
+		self.z = np.zeros((D+1), dtype=np.float64)
+		self.n = np.zeros((D+1), dtype=np.float64)
 		self.w_fm = np.zeros(D_fm, dtype=np.float64)
 		rand= randomgen.xoroshiro128.Xoroshiro128(seed= self.seed).generator
 		self.z_fm = (rand.random_sample(D * D_fm) - 0.5) * self.init_fm
-		self.n_fm = np.zeros(D, dtype=np.float64)
+		self.n_fm = np.zeros(D+1, dtype=np.float64)
 
 	def predict(self, X, int threads= 0):
 		if threads==0:  threads= self.threads
@@ -281,13 +276,6 @@ cdef class FM_FTRL:
 
 			if self.verbose>0:  print "Total e:", e_total
 		return self
-
-	def pickle_model(self, filename):
-		with gzip.open(filename, 'wb') as model_file:
-			pkl.dump(self.get_params(), model_file, protocol=2)
-
-	def unpickle_model(self, filename):
-		self.set_params(pkl.load(gzip.open(filename, 'rb')))
 
 	def __getstate__(self):
 		return (self.alpha,

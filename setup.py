@@ -13,7 +13,7 @@ else:
 
 setup(
 	name='Wordbatch',
-	version='1.3.5',
+	version='1.3.6',
 	description='Parallel text feature extraction for machine learning',
 	url='https://github.com/anttttti/Wordbatch',
 	author='Antti Puurula',
@@ -32,6 +32,7 @@ setup(
 		"License :: OSI Approved :: GNU General Public License v2 (GPLv2)",
 		"Programming Language :: Python :: 2.7",
 		"Programming Language :: Python :: 3.6",
+		"Programming Language :: Python :: 3.7",
 		"Programming Language :: Cython",
 		"Topic :: Scientific/Engineering :: Artificial Intelligence",
 		"Topic :: Software Development :: Libraries :: Python Modules",
