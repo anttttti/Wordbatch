@@ -13,7 +13,7 @@ else:
 
 setup(
 	name='Wordbatch',
-	version='1.3.6',
+	version='1.3.8',
 	description='Parallel text feature extraction for machine learning',
 	url='https://github.com/anttttti/Wordbatch',
 	author='Antti Puurula',

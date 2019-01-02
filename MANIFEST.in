@@ -13,6 +13,8 @@ include wordbatch/models/ftrl.pyx
 include wordbatch/models/fm_ftrl.pyx
 include wordbatch/models/nn_relu_h1.pyx
 include wordbatch/models/nn_relu_h2.pyx
+include wordbatch/models/avx_ext.c
+include wordbatch/models/avx_ext.h
 
 include scripts/wordbag_regressor.py
 include scripts/wordhash_regressor.py
