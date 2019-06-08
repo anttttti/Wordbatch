@@ -21,6 +21,6 @@ include scripts/wordhash_regressor.py
 include scripts/wordseq_regressor.py
 include scripts/wordvec_regressor.py
 include scripts/classify_airline_sentiment.py
-include scripts/wordbag_regressor_spark.py
+include scripts/backends_benchmark.py
 
 include data/Tweets.csv

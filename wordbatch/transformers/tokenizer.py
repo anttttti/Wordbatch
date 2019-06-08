@@ -6,16 +6,12 @@ from __future__ import print_function
 #from nltk.metrics import edit_distance
 import Levenshtein #python-Levenshtein
 from collections import defaultdict
-from collections import Counter
-
-WB_DOC_CNT= u'###DOC_CNT###' #Used for Spark document counting across RDFs
 
 def batch_get_dfs(args):
-	dft= Counter()
+	dft= defaultdict(int)
 	for text in args[0]:
 		for word in set(text.split(" ")):  dft[word]+= 1
-	dft[WB_DOC_CNT]+= len(args[0]) #Avoid Spark collect() by counting here
-	return dft
+	return [dict(dft), len(args[0])]
 
 def correct_spelling(word, dft, spell_index, spellcor_count, spellcor_dist):
 	#T. Bocek, E. Hunt, B. Stiller: Fast Similarity Search in Large Dictionaries, 2007
@@ -59,8 +55,7 @@ def get_deletions(word, order):
 	return list(results.keys())
 
 class Tokenizer(object):
-	def __init__(self, batcher, spellcor_count=0, spellcor_dist=2, raw_min_df= 0, stemmer= None, freeze= False,
-	             verbose= 1):
+	def __init__(self, spellcor_count=0, spellcor_dist=2, raw_min_df= 0, stemmer= None, freeze= False, verbose= 0):
 		self.verbose= verbose
 		self.freeze= freeze
 		if spellcor_count == 0:
@@ -70,53 +65,59 @@ class Tokenizer(object):
 		self.spellcor_count = spellcor_count
 		self.spellcor_dist = spellcor_dist
 		self.stemmer = stemmer
-		self.raw_min_df = raw_min_df
-		self.batcher= batcher
+		self.raw_min_df = raw_min_df #FIX
 		self.reset()
 
 	def reset(self):
-		self.dft = Counter()
+		self.dft = {}
 		self.doc_count = 0
 		return self
 
-	def fit(self, data, input_split= False, reset= True):
+	def fit(self, data, y= None, input_split= False, reset= True, batcher= None):
 		if reset:  self.reset()
 		if self.freeze:  return self
-		dft = self.dft
-		dfts = self.batcher.parallelize_batches(batch_get_dfs, data, [], input_split=input_split, merge_output=False)
-		if self.batcher.spark_context is not None:  dfts = [batch[1] for batch in dfts.collect()]
-		self.doc_count += sum([dft2.pop(WB_DOC_CNT) for dft2 in dfts])
-		for dft2 in dfts:  dft.update(dft2)
+		if batcher is None:  dfts, doc_counts= zip(*[batch_get_dfs(data)])
+		else:
+			dfts, doc_counts= zip(*batcher.collect_batches(
+				batcher.process_batches(batch_get_dfs, data, [], input_split= input_split, merge_output=False)))
+		self.doc_count += sum(doc_counts)
+		dft = defaultdict(int, self.dft)
+		for dft2 in dfts:
+			for k, v in dft2.items():  dft[k] += v
+		self.dft= dict(dft)
 		return self
 
-	def fit_transform(self, data, input_split= False, merge_output= True, reset= True):
-		self.fit(data, input_split, reset)
-		return self.transform(data, input_split, merge_output)
+	def partial_fit(self, data, y=None, input_split=False, batcher=None):
+		return self.fit(data, y, input_split, reset=False, batcher=batcher)
 
-	def transform(self, data, input_split= False, merge_output= True):
+	def fit_transform(self, data, y=None, input_split= False, merge_output= True, reset= True, batcher= None):
+		self.fit(data, y=y, input_split= input_split, reset=reset, batcher=batcher)
+		return self.transform(data, y=y, input_split=input_split, merge_output=merge_output, batcher=batcher)
+
+	def partial_fit_transform(self, data, y=None, cache_features=None, input_split=False, batcher=None):
+		return self.transform(data, y, cache_features, input_split, reset=False, update=True, batcher=batcher)
+
+	def transform(self, X, y=None, input_split= False, merge_output= True, batcher= None):
 		if self.verbose > 0:  print("Make word normalization dictionary")
-		if self.spellcor_dist > 0:
-			dft2 = {word: self.dft[word] for word in self.dft if self.dft[word] > self.spellcor_count}
+		do_corrections= 1 if (self.spellcor_count > 0) and (self.spellcor_dist>0) else 0
+		if not(do_corrections) and self.stemmer is None:  return X
+		if do_corrections:
+			dft2 = {w[0]: w[1] for w in self.dft.items() if w[1] > self.spellcor_count}
 			spell_index = defaultdict(list)
 			for word in dft2:
 				if len(word) > 15:  continue
 				for word2 in get_deletions(word, self.spellcor_dist):
 					spell_index[word2].append(word)
-		if self.stemmer != None:
-			if self.spellcor_count > 0:
+		if self.stemmer is not None:
+			if do_corrections:
 				corrs = {word: self.stemmer.stem(correct_spelling(
 					word, dft2, spell_index, self.spellcor_count, self.spellcor_dist)) for word in self.dft}
 			else:  corrs = {word: self.stemmer.stem(word) for word in self.dft}
-		else:
+		elif do_corrections:
 			corrs = {word: correct_spelling(
 				word, dft2, spell_index, self.spellcor_count, self.spellcor_dist) for word in self.dft}
 		corrs = {key: value for key, value in corrs.items() if key != value}
 		if self.verbose > 0:  print("Make word normalizations")
-		return self.batcher.parallelize_batches(batch_correct_spellings, data, [corrs],
-										input_split=input_split, merge_output=merge_output)
-# import wordbatch.batcher as batcher
-# b= batcher.Batcher(method="serial")
-# t= [[1, 2], [3, 4]]
-# import numpy as np
-# a= Apply(b, np.power, [2],{})
-# print(a.transform(t))
+		if batcher is None:  return batch_correct_spellings(X)
+		return batcher.process_batches(batch_correct_spellings, X, [corrs],
+		                               input_split=input_split, merge_output=merge_output)

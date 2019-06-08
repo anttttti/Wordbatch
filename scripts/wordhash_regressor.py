@@ -7,9 +7,10 @@ import re
 import json
 import gzip
 import scipy.sparse as ssp
-import wordbatch
+from wordbatch.pipelines import WordBatch
 from wordbatch.extractors import WordHash
 from wordbatch.models import FM_FTRL
+from wordbatch.transformers import Tokenizer
 import threading
 import multiprocessing
 import sys
@@ -36,10 +37,9 @@ class BatchData(object):
 		self.texts= None
 
 class WordhashRegressor(object):
-	def __init__(self, pickle_model="", datadir=None):
-		self.wb= wordbatch.WordBatch(normalize_text, stemmer= stemmer,
-										 extractor=(WordHash, {"decode_error":'ignore', "n_features":2 ** 25,
-										 "non_negative":False, "ngram_range":(1,2), "norm":'l2'}))
+	def __init__(self, pickle_model="", datadir=None, batcher= None):
+		self.wb= WordBatch(normalize_text, tokenizer= Tokenizer(stemmer=stemmer), extractor=WordHash(
+			decode_error='ignore', n_features=2 ** 25, ngram_range=(1,2), norm='l2'), batcher= batcher)
 		self.clf = FM_FTRL(D=2 ** 25, D_fm= 4, iters=1, inv_link="identity", threads= multiprocessing.cpu_count()//2)
 		if datadir==None:  (self.wb, self.clf)= pkl.load(gzip.open(pickle_model, 'rb'))
 		else: self.train(datadir, pickle_model)
@@ -90,7 +90,13 @@ class WordhashRegressor(object):
 		self.clf.fit(texts, labels)
 		if pickle_model != "":
 			with gzip.open(pickle_model, 'wb') as model_file:
+				backend= self.wb.batcher.backend
+				backend_handle= self.wb.batcher.backend_handle
+				self.wb.batcher.backend= "serial"
+				self.wb.batcher.backend_handle = None
 				pkl.dump((self.wb, self.clf), model_file, protocol=2)
+				self.wb.batcher.backend = backend
+				self.wb.batcher.backend_handle = backend_handle
 
 	def predict(self, texts):
 		counts= self.wb.transform(texts)

@@ -4,7 +4,6 @@ from __future__ import with_statement
 from __future__ import division
 from __future__ import absolute_import
 from __future__ import print_function
-import types
 from sklearn.utils.murmurhash import murmurhash3_32
 from sklearn.feature_extraction.text import HashingVectorizer
 #from nltk.metrics import edit_distance
@@ -14,9 +13,7 @@ import numpy as np
 import gzip
 import lz4framed
 import array
-import sys
 from wordbatch.data_utils import indlist2csrmatrix
-import wordbatch.transformers.dictionary
 from cpython cimport array
 cimport cython
 from libc.stdlib cimport abs
@@ -69,23 +66,21 @@ cdef class TextRow:
 		self.fea_weights[index]= weight
 
 class WordBag:
-	def __init__(self, batcher, dictionary, fea_cfg):
-		self.batcher= batcher
-		self.dictionary= dictionary
-		fea_cfg.setdefault("norm", 'l2')
-		fea_cfg.setdefault("tf", 'log')
-		fea_cfg.setdefault("idf", 0.0)
-		fea_cfg.setdefault("hash_ngrams", 0)
-		fea_cfg.setdefault("hash_ngrams_weights", None)
-		fea_cfg.setdefault("hash_size", 10000000)
-		fea_cfg.setdefault("hash_polys_window", 0)
-		fea_cfg.setdefault("hash_polys_mindf", 5)
-		fea_cfg.setdefault("hash_polys_maxdf", 0.5)
-		fea_cfg.setdefault("hash_polys_weight", 0.1)
-		fea_cfg.setdefault("seed", 0)
-		for key, value in fea_cfg.items():  setattr(self, key.lower(), value)
-		if self.hash_ngrams_weights==None: self.hash_ngrams_weights= [1.0 for x in range(self.hash_ngrams)]
-		if self.hash_ngrams== 0: self.hash_size= self.dictionary.max_words
+	def __init__(self, *args, **kwargs):
+		self.dictionary= kwargs.get('dictionary', None)
+		kwargs.setdefault("norm", 'l2')
+		kwargs.setdefault("tf", 'log')
+		kwargs.setdefault("idf", 0.0)
+		kwargs.setdefault("hash_ngrams", 0)
+		kwargs.setdefault("hash_ngrams_weights", None)
+		kwargs.setdefault("hash_size", 10000000)
+		kwargs.setdefault("hash_polys_window", 0)
+		kwargs.setdefault("hash_polys_mindf", 5)
+		kwargs.setdefault("hash_polys_maxdf", 0.5)
+		kwargs.setdefault("hash_polys_weight", 0.1)
+		kwargs.setdefault("seed", 0)
+		for key, value in kwargs.items():  setattr(self, key.lower(), value)
+		if self.hash_ngrams_weights is None: self.hash_ngrams_weights= [1.0 for _ in range(self.hash_ngrams)]
 
 	def transform_single(self, text):
 		dft= self.dictionary.dft
@@ -93,11 +88,12 @@ class WordBag:
 		cdef int fc_hash_ngrams= self.hash_ngrams, word_id, df= 1, df2, hashed, doc_count= self.dictionary.doc_count, \
 									use_idf= 0, seed= self.seed
 		cdef float idf_lift= 0.0, idf= 1.0, weight, norm= 1.0, norm_idf= 1.0
-		if self.idf!= None:
+		if self.idf is not None:
 			use_idf= True
 			idf_lift= self.idf
 			norm_idf= 1.0 / log(max(1.0, idf_lift + doc_count))
 		cdef int fc_hash_size= self.hash_size
+		if self.hash_ngrams == 0: hash_size = self.dictionary.max_words
 		fc_hash_ngrams_weights= self.hash_ngrams_weights
 		fc_tf= self.tf
 		fc_norm= self.norm
@@ -108,7 +104,7 @@ class WordBag:
 		cdef TextRow textrow= TextRow()
 		for x in range(len(text)):
 			word= text[x]
-			if len(word2id)!=0:
+			if word2id is not None:
 				word_id = word2id.get(word, -1)
 				if word_id == -1 or word_id>= fc_hash_size:  continue
 			df= dft.get(word, 0)
@@ -165,18 +161,17 @@ class WordBag:
 		elif fc_norm== 'l1':  norm= np.sum(np.abs(data_view))
 		elif fc_norm== 'l2':  norm= np.sqrt(np.sum([w*w for w in data_view]))
 		if norm != 0.0:  norm= 1.0 / norm
-		if fc_norm!=None:  wordbag.data*= norm
+		if fc_norm is not None:  wordbag.data*= norm
 		return wordbag
 
-	def batch_transform(self, texts):
+	def transform(self, texts, y= None):#input_split= False, merge_output= True, batcher= None):
 		return ssp.vstack([self.transform_single(text) for text in texts])
 
-	def transform(self, texts, input_split= False, merge_output= True):
-		return self.batcher.parallelize_batches(batch_transform, texts, [self], input_split= input_split,
-										   merge_output= merge_output, procs= int(self.batcher.procs / 2))
-
-	def fit(self):
+	def fit(self, texts, y= None):
 		return self
+
+	def fit_transform(self, texts, y=None):
+		return self.transform(texts, y=None)
 
 	def save_features(self, file, features):
 		csr_to_lz4(file, features)
@@ -185,19 +180,18 @@ class WordBag:
 		return lz4_to_csr(file)
 
 class WordHash:
-	def __init__(self, batcher, dictionary, fea_cfg):
-		self.batcher= batcher
-		self.dictionary= dictionary
-		self.hv= HashingVectorizer(**fea_cfg)
+	def __init__(self, *args, **kwargs):
+		if "dictionary" in kwargs:  kwargs.pop("dictionary")
+		self.hv = HashingVectorizer(*args, **kwargs)
 
-	def batch_transform(self, texts):  return self.hv.transform(texts)
+	def transform(self, texts, y=None):
+		return self.hv.transform(texts)
 
-	def transform(self, texts, input_split= False, merge_output= True):
-		return self.batcher.parallelize_batches(batch_transform, texts, [self], input_split= input_split,
-										   merge_output= merge_output, procs= int(self.batcher.procs / 2))
-
-	def fit(self):
+	def fit(self, texts, y=None):
 		return self
+
+	def fit_transform(self, texts, y=None):
+		return self.transform(texts, y=None)
 
 	def save_features(self, file, features):
 		csr_to_lz4(file, features)
@@ -207,22 +201,21 @@ class WordHash:
 
 
 class WordSeq:
-	def __init__(self, batcher, dictionary, fea_cfg):
-		self.batcher= batcher
-		self.dictionary= dictionary
-		fea_cfg.setdefault("seq_maxlen", None)
-		fea_cfg.setdefault("seq_padstart", True)
-		fea_cfg.setdefault("seq_truncstart", True)
-		fea_cfg.setdefault("remove_oovs", False)
-		fea_cfg.setdefault("pad_id", 0)
-		fea_cfg.setdefault("oov_id", dictionary.max_words+1)
-		for key, value in fea_cfg.items():  setattr(self, key.lower(), value)
+	def __init__(self, *args, **kwargs):
+		self.dictionary = kwargs.get('dictionary', None)
+		kwargs.setdefault("seq_maxlen", None)
+		kwargs.setdefault("seq_padstart", True)
+		kwargs.setdefault("seq_truncstart", True)
+		kwargs.setdefault("remove_oovs", False)
+		kwargs.setdefault("pad_id", 0)
+		for key, value in kwargs.items():  setattr(self, key.lower(), value)
 
 	def transform_single(self, text):
 		word2id= self.dictionary.word2id
+		oov_id= self.dictionary.max_words+1
 		if self.remove_oovs:  wordseq= [word2id[word] for word in text.split(" ") if word in word2id]
-		else:  wordseq= [word2id.get(word, self.oov_id) for word in text.split(" ")]
-		if self.seq_maxlen != None:
+		else:  wordseq= [word2id.get(word, oov_id) for word in text.split(" ")]
+		if self.seq_maxlen is not None:
 			if len(wordseq) > self.seq_maxlen:
 				if self.seq_truncstart:  wordseq= wordseq[-self.seq_maxlen:]
 				else:  wordseq= wordseq[:self.seq_maxlen]
@@ -231,14 +224,14 @@ class WordSeq:
 				else:  wordseq+= [self.pad_id] * (self.seq_maxlen - len(wordseq))
 		return wordseq
 
-	def batch_transform(self, texts):  return [self.transform_single(text) for text in texts]
+	def transform(self, texts, y= None):
+		return [self.transform_single(text) for text in texts]
 
-	def transform(self, texts, input_split= False, merge_output= True):
-		return self.batcher.parallelize_batches(batch_transform, texts, [self], input_split=input_split,
-										   merge_output=merge_output, procs= int(self.batcher.procs / 2))
-
-	def fit(self):
+	def fit(self, texts, y=None):
 		return self
+
+	def fit_transform(self, texts, y=None):
+		return self.transform(texts, y=None)
 
 	def save_features(self, file, features):
 		save_to_lz4(file, features, dtype=int)
@@ -256,24 +249,22 @@ class WordSeq:
 
 
 class WordVec:
-	def __init__(self, batcher, dictionary, fea_cfg):
-		self.batcher= batcher
-		self.dictionary= dictionary
-		fea_cfg.setdefault("normalize_text", None)
-		fea_cfg.setdefault("stemmer", None)
-		fea_cfg.setdefault("merge_dict", True)
-		fea_cfg.setdefault("normalize_dict", False)
-		fea_cfg.setdefault("verbose", 0)
-		fea_cfg.setdefault("merge_vectors", "mean")
-		fea_cfg.setdefault("normalize_merged", "l2")
-		fea_cfg.setdefault("encoding", "utf8")
-		fea_cfg.setdefault("shrink_model_transform", True)
-		fea_cfg.setdefault("w2v_dim", None)
-		for key, value in fea_cfg.items():  setattr(self, key.lower(), value)
-		if "w2v_model" in fea_cfg:  self.w2v= fea_cfg["w2v_model"]
-		else:  self.w2v= self.load_w2v(fea_cfg["wordvec_file"], fea_cfg['encoding'], fea_cfg['w2v_dim'])
+	def __init__(self, *args, **kwargs):
+		self.dictionary = kwargs.get('dictionary', None)
+		kwargs.setdefault("normalize_text", None)
+		kwargs.setdefault("stemmer", None)
+		kwargs.setdefault("merge_dict", True)
+		kwargs.setdefault("normalize_dict", False)
+		kwargs.setdefault("verbose", 0)
+		kwargs.setdefault("merge_vectors", "mean")
+		kwargs.setdefault("normalize_merged", "l2")
+		kwargs.setdefault("encoding", "utf8")
+		kwargs.setdefault("shrink_model_transform", True)
+		kwargs.setdefault("w2v_dim", None)
+		for key, value in kwargs.items():  setattr(self, key.lower(), value)
+		if "w2v_model" in kwargs:  self.w2v= kwargs["w2v_model"]
+		else:  self.w2v= self.load_w2v(kwargs["wordvec_file"], kwargs['encoding'], kwargs['w2v_dim'])
 		self.w2v_dim= len(list(self.w2v.values())[0])
-		self.fea_cfg= fea_cfg
 
 	def load_w2v(self, w2v_file, encoding= "ISO-8859-1", w2v_dim= None):
 		w2v= {}
@@ -288,8 +279,8 @@ class WordVec:
 				print("Wrong vector length", len(vec),", should be:", w2v_dim, ":", line)
 				continue
 			word= line[0]
-			if self.normalize_text!=None:  word= self.normalize_text(word)
-			if self.stemmer!=None:  word= self.stemmer.stem(word)
+			if self.normalize_text is not None:  word= self.normalize_text(word)
+			if self.stemmer is not None:  word= self.stemmer.stem(word)
 			if not(self.merge_dict):  w2v[word]= vec
 			else:
 				w2v_counts[word] += 1
@@ -316,10 +307,10 @@ class WordVec:
 		for word in text:
 			if word in w2v:  vecs.append(w2v[word])
 			else:  vecs.append(np.zeros(self.w2v_dim))
-		if self.merge_vectors!=None: #Merge word vectors to a per-document vector
+		if self.merge_vectors is not None: #Merge word vectors to a per-document vector
 			if self.merge_vectors=="mean": #Currently only mean vector suppported, could do max, median, etc.
 				vec= np.mean(vecs, axis=0)
-			if self.normalize_merged!=None: #l1 and l2 normalization supported
+			if self.normalize_merged is not None: #l1 and l2 normalization supported
 				if self.normalize_merged == "l1":
 					norm = sum(np.abs(vec))
 				else:
@@ -329,63 +320,56 @@ class WordVec:
 			return vec
 		return vecs
 
-	def batch_transform(self, texts):
+	def transform(self, texts, y=None):
+		#if batcher is None:  return batch_transform(texts)
+		# if self.shrink_model_transform == True:
+		# 	#Send only word vectors occurring in texts to parallel processes.
+		# 	#Use to reduce memory footprint with big embedding files.
+		# 	d= wordbatch.transformers.dictionary.Dictionary(verbose=0, encode=False).fit(texts, input_split=input_split)
+		# 	w2v_model2= {x:self.w2v[x] for x in [z for z in self.w2v.keys() if z in d.dft]}
+		# 	fea_cfg2= self.fea_cfg
+		# 	fea_cfg2['w2v_model']= w2v_model2
+		# 	self_shrunk= WordVec(dictionary=None, fea_cfg=fea_cfg2)
+		# else:  self_shrunk= self
+		#return batcher.process_batches(batch_transform, texts, [self], input_split=input_split,
+		#								   merge_output=merge_output)
 		return [self.transform_single(text) for text in texts]
 
-	def transform(self, texts, input_split= False, merge_output= True):
-		if self.fea_cfg['shrink_model_transform']== True:
-			#Send only word vectors occurring in texts to parallel processes.
-			#Use to reduce memory footprint with big embedding files.
-			d= wordbatch.transformers.dictionary.Dictionary(batcher=self.batcher, verbose=0, encode=False)\
-				.fit(texts, input_split=input_split)
-			w2v_model2= {x:self.w2v[x] for x in [z for z in self.w2v.keys() if z in d.dft]}
-			fea_cfg2= self.fea_cfg
-			fea_cfg2['w2v_model']= w2v_model2
-			self_shrunk= WordVec(batcher=self.batcher, dictionary=None, fea_cfg=fea_cfg2)
-		else:  self_shrunk= self
-		return self.batcher.parallelize_batches(batch_transform, texts, [self_shrunk], input_split=input_split,
-										   merge_output=merge_output, procs= int(self.batcher.procs / 2))
-
-	def fit(self):
+	def fit(self, texts, y=None):
 		return self
+
+	def fit_transform(self, texts, y=None):
+		return self.transform(texts, y)
 
 
 class Hstack:
-	def __init__(self, batcher, dictionary, fea_cfg):
-		self.batcher= batcher
-		self.dictionary= dictionary
-		t = [x[0](batcher, dictionary, x[1]) for x in fea_cfg]
-		self.extractors= list(t)
+	def __init__(self, extractors):
+		self.extractors= extractors
 
-	def transform_single(self, text):
-		return sp.hstack([x.transform_single(text) for x in self.extractors])
+	def transform(self, texts, y= None):
+		return sp.hstack([x.transform(texts) for x in self.extractors])
 
-	def batch_transform(self, texts):  return [self.transform_single(text) for text in texts]
-
-	def transform(self, texts, input_split= False, merge_output= True):
-		return self.batcher.parallelize_batches(batch_transform, texts, [self], input_split=input_split,
-										   merge_output=merge_output, procs= int(self.batcher.procs / 2))
-
-	def fit(self):
+	def fit(self, texts, y=None):
 		return self
+
+	def fit_transform(self, texts, y=None):
+		return self.transform(texts, y)
 
 
 class PandasHash:
-	def __init__(self, batcher, dictionary, fea_cfg):
-		self.batcher= batcher
-		self.dictionary= dictionary
+	def __init__(self, *args, **kwargs):
 		self.col_salt= None
 		self.col_weight= None
 		self.col_pick= []
 		#self.col_type= []
-		for key, value in fea_cfg.items():  setattr(self, key.lower(), value)
+		for key, value in kwargs.items():  setattr(self, key.lower(), value)
 		if self.col_salt is None:
 			self.col_salt = ["".join([z[0] for z in x.replace(" ", "_").replace("|", "_").split("_")])
-			            for x in self.col_pick]
+						for x in self.col_pick]
 		if self.col_weight is None:  self.col_weight = np.ones(len(self.col_pick))
 		#if self.col_type is None:  self.col_type = ["cat"]*len(self.col_pick)
 
-	def batch_transform(self, df):
+	def transform(self, df, y= None):
 		D= self.n_features
 		col_pick= self.col_pick
 		col_salt= self.col_salt
@@ -399,10 +383,9 @@ class PandasHash:
 								datalist= [col_weight] * len(df),
 								shape= (len(df), D))
 
-	def transform(self, texts, input_split= False, merge_output= True):
-		return self.batcher.parallelize_batches(batch_transform, texts, [self], input_split=input_split,
-										   merge_output=merge_output, procs= int(self.batcher.procs / 2))
-
-	def fit(self):
+	def fit(self, texts, y=None):
 		return self
+
+	def fit_transform(self, texts, y=None):
+		return self.transform(texts, y)
 

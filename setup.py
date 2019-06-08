@@ -13,16 +13,17 @@ else:
 
 setup(
 	name='Wordbatch',
-	version='1.3.8',
-	description='Parallel text feature extraction for machine learning',
+	version='1.4.0',
+	description='Python library for distributed AI processing pipelines, using swappable scheduler backends',
 	url='https://github.com/anttttti/Wordbatch',
 	author='Antti Puurula',
 	author_email='antti.puurula@yahoo.com',
 
 	packages=['wordbatch',
-			  'wordbatch.extractors',
-			  'wordbatch.models',
-			  'wordbatch.transformers'
+	          'wordbatch.pipelines',
+	          'wordbatch.extractors',
+						'wordbatch.models',
+						'wordbatch.transformers'
 	],
 
 	license='GNU GPL 2.0',
@@ -30,7 +31,6 @@ setup(
 		"Development Status :: 4 - Beta",
 		"Intended Audience :: Developers",
 		"License :: OSI Approved :: GNU General Public License v2 (GPLv2)",
-		"Programming Language :: Python :: 2.7",
 		"Programming Language :: Python :: 3.6",
 		"Programming Language :: Python :: 3.7",
 		"Programming Language :: Cython",
@@ -38,8 +38,8 @@ setup(
 		"Topic :: Software Development :: Libraries :: Python Modules",
 	],
 	install_requires=['cython', 'scikit-learn', 'python-Levenshtein', 'py-lz4framed', 'randomgen', 'numpy', 'scipy',
-					  'pandas', 'dill'],
-	extras_require={'dev': ['nltk', 'textblob', 'keras', 'pyspark']},
+					  'pandas'],
+	extras_require={'dev': ['nltk', 'textblob', 'keras', 'pyspark', 'dask', 'distributed', 'ray']},
 
 
 	cmdclass= {'build_ext': build_ext},
