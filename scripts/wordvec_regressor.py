@@ -9,7 +9,7 @@ import gzip
 from wordbatch.pipelines import WordBatch
 from wordbatch.models import FTRL
 from wordbatch.extractors import WordVec, Hstack
-from wordbatch.data_utils import shuffle
+from sklearn.utils import shuffle
 import threading
 import sys
 if sys.version_info.major == 3:
@@ -53,7 +53,7 @@ class WordvecRegressor(object):
 		else: self.train(datadir, pickle_model)
 
 	def fit_batch(self, texts, labels, rcount):
-		texts, labels = shuffle(texts, labels, seed=rcount)
+		texts, labels = shuffle(texts, labels)
 		print("Transforming", rcount)
 		#texts= self.wb.fit_transform(texts, tn__batcher=self.batcher, dct__reset= False, dct__batcher= self.batcher)
 		texts = self.wb.fit_transform(texts)

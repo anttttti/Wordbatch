@@ -13,7 +13,7 @@ else:
 
 setup(
 	name='Wordbatch',
-	version='1.4.0',
+	version='1.4.1',
 	description='Python library for distributed AI processing pipelines, using swappable scheduler backends',
 	url='https://github.com/anttttti/Wordbatch',
 	author='Antti Puurula',
@@ -38,7 +38,7 @@ setup(
 		"Topic :: Software Development :: Libraries :: Python Modules",
 	],
 	install_requires=['cython', 'scikit-learn', 'python-Levenshtein', 'py-lz4framed', 'randomgen', 'numpy', 'scipy',
-					  'pandas'],
+                          'pandas', 'wheel>=0.33.4'],
 	extras_require={'dev': ['nltk', 'textblob', 'keras', 'pyspark', 'dask', 'distributed', 'ray']},
 
 

@@ -8,31 +8,31 @@ from multiprocessing.pool import ThreadPool
 import itertools
 import scipy.sparse as ssp
 
-@contextmanager
-def timer(name):
-    t0 = time.time()
-    yield
-    print(name + " done in " + str(time.time() - t0) + "s")
-
-def shuffle(*objects, seed=0):
-    #Faster than inplace, but uses more memory
-    if isinstance(objects[0], ssp.base.spmatrix):  lenn= objects[0].shape[0]
-    else: lenn= len(objects[0])
-    shuffled= randomgen.xoroshiro128.Xoroshiro128(seed).generator.permutation(lenn)
-    return [[x[z] for z in shuffled] if type(x)==list else x[shuffled] for x in objects]
-
-def inplace_shuffle(*objects, seed=0):
-    #Slower than shuffle, but uses no extra memory
-    rand = randomgen.xoroshiro128.Xoroshiro128(seed).generator
-    for x in objects:
-        rand.seed(seed)
-        rand.shuffle(x)
-
-def inplace_shuffle_threaded(*objects, threads= 0, seed=0):
-    #Faster than inplace for very large array sizes, > 10000000
-    if threads== 0:  threads= min(len(objects), multiprocessing.cpu_count())
-    with ThreadPool(processes=threads) as pool:
-        pool.map(partial(inplace_shuffle, seed=seed), objects)
+# @contextmanager
+# def timer(name):
+#     t0 = time.time()
+#     yield
+#     print(name + " done in " + str(time.time() - t0) + "s")
+#
+# def shuffle(*objects, seed=0):
+#     #Faster than inplace, but uses more memory
+#     if isinstance(objects[0], ssp.base.spmatrix):  lenn= objects[0].shape[0]
+#     else: lenn= len(objects[0])
+#     shuffled= randomgen.xoroshiro128.Xoroshiro128(seed).generator.permutation(lenn)
+#     return [[x[z] for z in shuffled] if type(x)==list else x[shuffled] for x in objects]
+#
+# def inplace_shuffle(*objects, seed=0):
+#     #Slower than shuffle, but uses no extra memory
+#     rand = randomgen.xoroshiro128.Xoroshiro128(seed).generator
+#     for x in objects:
+#         rand.seed(seed)
+#         rand.shuffle(x)
+#
+# def inplace_shuffle_threaded(*objects, threads= 0, seed=0):
+#     #Faster than inplace for very large array sizes, > 10000000
+#     if threads== 0:  threads= min(len(objects), multiprocessing.cpu_count())
+#     with ThreadPool(processes=threads) as pool:
+#         pool.map(partial(inplace_shuffle, seed=seed), objects)
 
 def indlist2csrmatrix(indlist, datalist= None, shape= None):
     #Convert a list of indicator lists to a scipy.sparse.csr_matrix

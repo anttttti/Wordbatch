@@ -1,5 +1,5 @@
 =============
-Wordbatch 1.4
+Wordbatch 1.4.1
 =============
 
 Overview
@@ -10,7 +10,7 @@ Python library for distributed AI processing pipelines, using swappable schedule
 Wordbatch parallelizes task pipelines as minibatches processed by a chosen scheduler backend. This allows
 the user to develop AI programs on a local workstation or laptop, and scale the same
 solution on a cluster or the cloud, simply by changing the pipeline backend to a distributed scheduler such as Spark,
-Dask and Ray. A backend can be chosen based on performance characteristics on a particular task, and swapped for
+Dask or Ray. A backend can be chosen based on performance characteristics on a particular task, and swapped for
 different situations. For example, an AI model can be trained using a distributed backend, and then debugged or
 deployed using a single serial process.
 
@@ -29,6 +29,11 @@ Installation
 pip install wordbatch
 
 macOS: compile using GCC-7 (https://github.com/anttttti/Wordbatch/issues/1)
+
+linux: make sure GCC and its required libraries are installed before installing Wordbatch
+| sudo apt install gcc
+| sudo apt-get update
+| sudo apt-get install --reinstall build-essential
 
 Getting started
 ===============

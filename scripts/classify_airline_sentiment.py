@@ -41,7 +41,6 @@ if __name__ == "__main__":
 	d_sentiment_to_label= {"neutral":0, "negative":-1, "positive":1}
 	df['airline_sentiment_confidence']= df['airline_sentiment_confidence'].astype('str')
 	df['sentiment'] = (df['airline_sentiment']).map(d_sentiment_to_label)
-	#df['sentiment']= (df['airline_sentiment']).apply(lambda x: sentiment_to_label(x))
 	df= df[['text','sentiment']]
 
 	re_attags= re.compile(" @[^ ]* ")

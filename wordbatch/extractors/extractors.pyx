@@ -389,3 +389,18 @@ class PandasHash:
 	def fit_transform(self, texts, y=None):
 		return self.transform(texts, y)
 
+
+class CategoricalEncoder:
+	def __init__(self, *args, **kwargs):
+		self.dictionary= kwargs.get('dictionary', None)
+
+	def transform(self, data, y= None):
+		return [self.dictionary.word2id.get(x, self.dictionary.max_words) for x in data]
+
+	def fit(self, data, y=None):
+		self.dictionary.prune_dictionary(re_encode=True, prune_dfs=False)
+		return self
+
+	def fit_transform(self, data, y=None):
+		self.fit(data)
+		return self.transform(data, y)

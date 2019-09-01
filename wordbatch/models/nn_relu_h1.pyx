@@ -77,7 +77,7 @@ cdef class NN_ReLU_H1:
 	def __init__(self,
 				 double alpha=0.1,
 				 double L2=0.001,
-				 int D=2**25,
+				 int D=0,
 				 int D_nn=30,
 				 double init_nn=0.01,
 				 double e_noise=0.0001,
@@ -118,6 +118,8 @@ cdef class NN_ReLU_H1:
 	def predict(self, X, int threads= 0):
 		if threads==0:  threads= self.threads
 		if type(X) != ssp.csr.csr_matrix:  X= ssp.csr_matrix(X, dtype=np.float64)
+		if X.shape[1] != self.D:
+			print("Dimension mismatch! self.D=", self.D, "X.shape[1]=", X.shape[1])
 		return self.predict_f(X.data, X.indices, X.indptr, threads)
 
 	def predict_f(self, np.ndarray[double, ndim=1, mode='c'] X_data,
@@ -140,9 +142,13 @@ cdef class NN_ReLU_H1:
 		return self.fit(X, y, sample_weight= sample_weight, threads = threads, seed = seed, reset= False)
 
 	def fit(self, X, y, sample_weight= None, int threads= 0, int seed= 0, reset= True):
-		if reset:  self.reset()
 		if threads == 0:  threads= self.threads
 		if type(X) != ssp.csr.csr_matrix:  X = ssp.csr_matrix(X, dtype=np.float64)
+		if reset or self.D==0:
+			self.D= X.shape[1]
+			self.reset()
+		elif X.shape[1] != self.D:
+			print("Dimension mismatch! self.D=", self.D, "X.shape[1]=", X.shape[1])
 		if type(y) != np.array:  y = np.array(y, dtype=np.float64)
 		# self.fit_f(X, np.ascontiguousarray(X.data), np.ascontiguousarray(X.indices),
 		#           np.ascontiguousarray(X.indptr), y, threads)

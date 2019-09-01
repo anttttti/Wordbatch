@@ -32,8 +32,8 @@ class Apply(object):
 	def transform(self, data, input_split= False, merge_output= True, minibatch_size= None, batcher= None):
 		if batcher is None:  batcher = self.batcher
 		return batcher.process_batches(batch_transform, data, [self.function] + self.args + self.kwargs,
-		                                    input_split=input_split, merge_output=merge_output,
-		                                    minibatch_size= minibatch_size)
+		                               input_split=input_split, merge_output=merge_output,
+		                               minibatch_size= minibatch_size)
 # import wordbatch.batcher as batcher
 # b= batcher.Batcher(minibatch_size=2)#, method="serial")
 # import numpy as np

@@ -183,11 +183,11 @@ class Batcher(object):
 		"""
 		if procs is None:  procs= self.procs
 		if backend is None:  backend= self.backend
-		if backend_handle is None:  backend_handle = self.backend
+		if backend_handle is None:  backend_handle = self.backend_handle
 		if verbose is None: verbose= self.verbose
 		if verbose > 1:
-			print("Parallel task:", task, " backend:", backend, " procs:", self.procs,
-				  " input_split:", input_split, " merge_output:", merge_output)
+			print("Task:", task, " backend:", backend, " backend_handle:", backend_handle, " procs:",
+		      self.procs, " input_split:", input_split, " merge_output:", merge_output)
 
 		if verbose> 10:
 			print("len(data):", len(data), "len(args):", len(args), "[type(x) for x in data]:",
@@ -241,6 +241,8 @@ class Batcher(object):
 			#   jobs = [self.backend_handle.submit(task, (x,), (), ()) for x in paral_params]
 			#	results = [x() for x in jobs]
 		if merge_output:  return self.merge_batches(self.collect_batches(results, backend=backend))
+		if verbose > 2:
+			print("Task:", task, " backend:", backend, " backend_handle:", backend_handle, " completed")
 		return results
 
 	def shuffle_batch(self, texts, labels= None, seed= None):

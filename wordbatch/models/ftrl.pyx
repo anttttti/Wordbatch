@@ -18,7 +18,7 @@ cdef double inv_link_f(double e, int inv_link) nogil:
 	return e
 
 cdef double predict_single(int* inds, double* vals, int lenn, double L1, double baL2, double ialpha, double beta,
-				double* w, double* z, double* n, bint bias_term, int threads):# nogil:
+				double* w, double* z, double* n, bint bias_term, int threads) nogil:
 	cdef int i, ii
 	cdef double sign, zi, wi
 	cdef double e= 0.0
@@ -83,7 +83,7 @@ cdef class FTRL:
 				 double beta=1.0,
 				 double L1=1.0,
 				 double L2=1.0,
-				 unsigned int D=2**25,
+				 unsigned int D=0,
 				 double init= 0.0,
 				 unsigned int iters=10,
 				 double e_clip= 1.0,
@@ -123,6 +123,8 @@ cdef class FTRL:
 	def predict(self, X, int threads= 0):
 		if threads==0:  threads= self.threads
 		if type(X) != ssp.csr.csr_matrix:  X= ssp.csr_matrix(X, dtype=np.float64)
+		if X.shape[1] != self.D:
+			print("Dimension mismatch! self.D=", self.D, "X.shape[1]=", X.shape[1])
 		# return self.predict_f(X, np.ascontiguousarray(X.data), np.ascontiguousarray(X.indices),
 		#               np.ascontiguousarray(X.indptr), threads)
 		return self.predict_f(X.data, X.indices, X.indptr, threads)
@@ -134,7 +136,7 @@ cdef class FTRL:
 		p= np.zeros(X_indptr.shape[0]-1, dtype= np.float64)
 		cdef double *w= &self.w[0], *z= &self.z[0], *n= &self.n[0]
 		cdef double[:] pp= p
-		cdef int lenn, row_count= X_indptr.shape[0]-1, row, ptr
+		cdef unsigned lenn, row_count= X_indptr.shape[0]-1, row, ptr
 		cdef bint bias_term= self.bias_term
 		for row in range(row_count):
 			ptr= X_indptr[row]
@@ -149,10 +151,13 @@ cdef class FTRL:
 		return self.fit(X, y, sample_weight= sample_weight, threads = threads, reset= False)
 
 	def fit(self, X, y, sample_weight= None, int threads= 0, reset= True):
-		if reset:  self.reset()
 		if threads == 0:  threads= self.threads
-		if type(X) != ssp.csr.csr_matrix:
-			X = ssp.csr_matrix(X, dtype=np.float64)
+		if type(X) != ssp.csr.csr_matrix:  X = ssp.csr_matrix(X, dtype=np.float64)
+		if reset or self.D==0:
+			self.D= X.shape[1]
+			self.reset()
+		elif X.shape[1] != self.D:
+			print("Dimension mismatch! self.D=", self.D, "X.shape[1]=", X.shape[1])
 		#if type(y) != np.array:  y = np.array(y, dtype=np.float64)
 		y= np.ascontiguousarray(y, dtype=np.float64)
 		if sample_weight is not None and type(sample_weight) != np.array:
@@ -169,7 +174,7 @@ cdef class FTRL:
 		cdef double ialpha= 1.0/self.alpha, L1= self.L1, beta= self.beta, baL2= beta * ialpha + self.L2, e, e_total= 0,\
 					e_clip= self.e_clip, abs_e
 		cdef double *w= &self.w[0], *z= &self.z[0], *n= &self.n[0], *ys= <double*> y.data
-		cdef unsigned int lenn, ptr, row_count= X_indptr.shape[0]-1, row, inv_link= self.inv_link, j=0, jj
+		cdef int lenn, ptr, row_count= X_indptr.shape[0]-1, row, inv_link= self.inv_link, j=0, jj
 		cdef bint bias_term= self.bias_term
 		cdef int* inds, indptr
 		cdef double* vals

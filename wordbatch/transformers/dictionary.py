@@ -9,7 +9,10 @@ import operator
 def batch_get_dfs(args):
 	dft= defaultdict(int)
 	for text in args[0]:
-		for word in set(text.split(" ")):  dft[word]+= 1
+		if type(text)==str:
+			for word in set(text.split(" ")):  dft[word]+= 1
+		else:
+			dft[str(text)]+= 1
 	return [dict(dft), len(args[0])]
 
 class Dictionary(object):
@@ -40,9 +43,9 @@ class Dictionary(object):
 	def prune_dictionary(self, max_words=None, min_df=None, max_df=None, re_encode= False, prune_dfs= True,
 						 set_max_words= True):
 		#Prune dictionary. Optionally prune document frequency table as well
-		if max_words != None: self.max_words= max_words
-		if min_df != None: self.min_df= min_df
-		if max_df != None: self.max_df= max_df
+		if max_words is not None: self.max_words= max_words
+		if min_df is not None: self.min_df= min_df
+		if max_df is not None: self.max_df= max_df
 		max_words= self.max_words
 		word2id = self.word2id
 		dft = self.dft
@@ -62,12 +65,12 @@ class Dictionary(object):
 				if word2id is not None:  word2id[word]= c
 		if set_max_words and word2id is not None:  self.max_words= len(word2id)
 
-	def fit(self, data, y=None, input_split= False, reset= False, batcher= None):
+	def fit(self, data, y=None, input_split= False, reset= False, minibatch_size=None, batcher= None):
 		if reset:  self.reset()
 		if self.word2id is None:
 			self.word2id = {}
 		word2id= self.word2id
-		if batcher is None:  dfts, doc_counts= zip(*[batch_get_dfs(data)])
+		if batcher is None:  dfts, doc_counts= zip(*batch_get_dfs(data))
 		else:
 			# import wordbatch.pipelines
 			# dfts, doc_counts = zip(*batcher.collect_batches(
@@ -75,7 +78,8 @@ class Dictionary(object):
 			# 		data, input_split=input_split, merge_output=False)
 			# ))
 			dfts, doc_counts= zip(*batcher.collect_batches(
-				batcher.process_batches(batch_get_dfs, data, [], input_split= input_split, merge_output=False)))
+				batcher.process_batches(batch_get_dfs, data, [], input_split= input_split, merge_output=False,
+				                        minibatch_size=minibatch_size)))
 		self.doc_count += sum(doc_counts)
 		dft = defaultdict(int, self.dft)
 		for dft2 in dfts:
@@ -92,16 +96,19 @@ class Dictionary(object):
 		self.dft= dict(dft)
 		return self
 
-	def partial_fit(self, data, y=None, input_split=False, batcher=None):
-		return self.fit(data, y, input_split, reset=False, batcher=batcher)
+	def partial_fit(self, data, y=None, input_split=False, minibatch_size=None, batcher=None):
+		return self.fit(data, y, input_split, reset=False, minibatch_size=minibatch_size, batcher=batcher)
 
-	def fit_transform(self, data, y=None, input_split= False, merge_output= True, reset= True, batcher= None):
-		self.fit(data, y=y, input_split= input_split, reset=reset, batcher=batcher)
+	def fit_transform(self, data, y=None, input_split= False, merge_output= True, reset= True, minibatch_size=None,
+	                  batcher= None):
+		self.fit(data, y=y, input_split= input_split, reset=reset, minibatch_size= minibatch_size, batcher=batcher)
 		return self.transform(data, y=y, input_split= input_split, merge_output= merge_output, batcher= None)
 
-	def partial_fit_transform(self, data, y=None, cache_features=None, input_split=False, batcher=None):
-		return self.transform(data, y, cache_features, input_split, reset=False, update=True, batcher=batcher)
+	def partial_fit_transform(self, data, y=None, input_split=False, minibatch_size=None,
+	                          batcher=None):
+		return self.transform(data, y, input_split, reset=False, update=True, batcher=batcher)
 
-	def transform(self, data, y=None, input_split= False, merge_output= True, batcher= None):
+	def transform(self, data, y=None, input_split= False, merge_output= True, minibatch_size=None,
+	              batcher= None):
 		if input_split and merge_output and batcher is not None:  data= batcher.merge_batches(data)
 		return data

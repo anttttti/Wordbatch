@@ -104,8 +104,7 @@ for task in tasks:
 				if task=="WordBag":
 					wb = WordBatch(normalize_text=normalize_text,
 					               dictionary=Dictionary(min_df=10, max_words=1000000, verbose=0),
-					               tokenizer= Tokenizer(spellcor_count=2, spellcor_dist=2, raw_min_df= 2,
-									 					stemmer= stemmer),
+					               tokenizer= Tokenizer(spellcor_count=2, spellcor_dist=2, stemmer= stemmer),
 					               extractor=WordBag(hash_ngrams=0, norm= 'l2', tf= 'binary', idf= 50.0),
 					               batcher= batcher,
 					               verbose= 0)

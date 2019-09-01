@@ -28,13 +28,14 @@ class TextNormalizer(object):
 
 	def batch_transform(self, data):  return [self.normalize_text(text) for text in data]
 
-	def transform(self, data, input_split=False, merge_output=True, batcher=None):
+	def transform(self, data, input_split=False, merge_output=True, minibatch_size= None, batcher=None):
 		if batcher is None:  batcher = wordbatch.batcher.Batcher()
 		return batcher.process_batches(batch_transform, data, [self], input_split=input_split,
-		                               merge_output=merge_output)
+		                               merge_output=merge_output, minibatch_size= minibatch_size)
 
-	def fit(self, data, y=None, input_split=False, merge_output=True, batcher=None):
+	def fit(self, data, y=None, input_split=False, merge_output=True, minibatch_size= None, batcher=None):
 		return self
 
-	def fit_transform(self, data, y=None, input_split=False, merge_output=True, batcher=None):
-		return self.transform(data, input_split, merge_output, batcher)
+	def fit_transform(self, data, y=None, input_split=False, merge_output=True,
+		                      minibatch_size= None, batcher=None):
+		return self.transform(data, input_split, merge_output, minibatch_size, batcher)
