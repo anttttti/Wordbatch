@@ -5,25 +5,25 @@ import numpy
 import os
 
 if os.name == 'nt':
-    extra_compile_args = ["/openmp", "/Ox", "/arch:AVX2", "/fp:fast"]
-    extra_link_args = []
+	extra_compile_args = ["/openmp", "/Ox", "/arch:AVX2", "/fp:fast"]
+	extra_link_args = []
 else:
-    extra_compile_args = ["-O3", "-fopenmp", "-ffast-math", "-mavx2", "-march=native", "-ftree-vectorize", "-std=gnu11"]
-    extra_link_args = ["-fopenmp"]
+	extra_compile_args = ["-O3", "-fopenmp", "-ffast-math", "-mavx2", "-march=native", "-ftree-vectorize", "-std=gnu11"]
+	extra_link_args = ["-fopenmp"]
 
 setup(
 	name='Wordbatch',
-	version='1.4.1',
+	version='1.4.2',
 	description='Python library for distributed AI processing pipelines, using swappable scheduler backends',
 	url='https://github.com/anttttti/Wordbatch',
 	author='Antti Puurula',
 	author_email='antti.puurula@yahoo.com',
 
 	packages=['wordbatch',
-	          'wordbatch.pipelines',
-	          'wordbatch.extractors',
-						'wordbatch.models',
-						'wordbatch.transformers'
+			  'wordbatch.pipelines',
+			  'wordbatch.extractors',
+			  'wordbatch.models',
+			  'wordbatch.transformers'
 	],
 
 	license='GNU GPL 2.0',
@@ -38,7 +38,7 @@ setup(
 		"Topic :: Software Development :: Libraries :: Python Modules",
 	],
 	install_requires=['cython', 'scikit-learn', 'python-Levenshtein', 'py-lz4framed', 'randomgen', 'numpy', 'scipy',
-                          'pandas', 'wheel>=0.33.4'],
+						  'pandas', 'wheel>=0.33.4'],
 	extras_require={'dev': ['nltk', 'textblob', 'keras', 'pyspark', 'dask', 'distributed', 'ray']},
 
 

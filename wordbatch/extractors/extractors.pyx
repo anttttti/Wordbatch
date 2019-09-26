@@ -395,7 +395,7 @@ class CategoricalEncoder:
 		self.dictionary= kwargs.get('dictionary', None)
 
 	def transform(self, data, y= None):
-		return [self.dictionary.word2id.get(x, self.dictionary.max_words) for x in data]
+		return [self.dictionary.word2id.get(x, self.dictionary.max_words+1) for x in data]
 
 	def fit(self, data, y=None):
 		self.dictionary.prune_dictionary(re_encode=True, prune_dfs=False)
