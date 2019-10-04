@@ -33,7 +33,7 @@ class Dictionary(object):
 		return self
 
 	def get_pruning_dft(self, dft):
-		sorted_dft = sorted(list(dft.items()), key=operator.itemgetter(1), reverse=True)
+		sorted_dft = sorted(list(dft.items()), key=operator.itemgetter(1,0), reverse=True)
 		if type(self.min_df) == type(1):  min_df2 = self.min_df
 		else:  min_df2 = self.doc_count * self.min_df
 		if type(self.max_df) == type(1):   max_df2 = self.max_df
