@@ -92,24 +92,24 @@ for task in tasks:
 		print("Task:", task, "Data size:", data_size)
 		for backend in backends:
 			batcher = Batcher(procs=16, minibatch_size=5000, backend=backend[0], backend_handle=backend[1])
-			#try:
-			with timer("Completed: ["+task+","+str(len(texts_chunk))+","+backend[0]+"]"), warnings.catch_warnings():
-				warnings.simplefilter("ignore")
-				if task=="ApplyBatch":
-					hv = HashingVectorizer(decode_error='ignore', n_features=2 ** 25, preprocessor=normalize_text,
-										   ngram_range=(1, 2), norm='l2')
-					t= ApplyBatch(hv.transform, batcher=batcher).transform(texts_chunk)
-					print(t.shape, t.data[:5])
+			try:
+				with timer("Completed: ["+task+","+str(len(texts_chunk))+","+backend[0]+"]"), warnings.catch_warnings():
+					warnings.simplefilter("ignore")
+					if task=="ApplyBatch":
+						hv = HashingVectorizer(decode_error='ignore', n_features=2 ** 25, preprocessor=normalize_text,
+											   ngram_range=(1, 2), norm='l2')
+						t= ApplyBatch(hv.transform, batcher=batcher).transform(texts_chunk)
+						print(t.shape, t.data[:5])
 
-				if task=="WordBag":
-					wb = WordBatch(normalize_text=normalize_text,
-					               dictionary=Dictionary(min_df=10, max_words=1000000, verbose=0),
-					               tokenizer= Tokenizer(spellcor_count=2, spellcor_dist=2, stemmer= stemmer),
-					               extractor=WordBag(hash_ngrams=0, norm= 'l2', tf= 'binary', idf= 50.0),
-					               batcher= batcher,
-					               verbose= 0)
-					t = wb.fit_transform(texts_chunk)
-					print(t.shape, t.data[:5])
-			# except:
-			# 	print("Failed ["+task+","+str(len(texts_chunk))+","+backend[0]+"]")
+					if task=="WordBag":
+						wb = WordBatch(normalize_text=normalize_text,
+						               dictionary=Dictionary(min_df=10, max_words=1000000, verbose=0),
+						               tokenizer= Tokenizer(spellcor_count=2, spellcor_dist=2, stemmer= stemmer),
+						               extractor=WordBag(hash_ngrams=0, norm= 'l2', tf= 'binary', idf= 50.0),
+						               batcher= batcher,
+						               verbose= 0)
+						t = wb.fit_transform(texts_chunk)
+						print(t.shape, t.data[:5])
+			except:
+			 	print("Failed ["+task+","+str(len(texts_chunk))+","+backend[0]+"]")
 		print("")

@@ -5,6 +5,11 @@ from __future__ import absolute_import
 from __future__ import print_function
 import wordbatch.batcher
 
+def decorator_apply_batch(func, batcher=None):
+	def wrapper_func(*args, **kwargs):
+		return ApplyBatch(func, args=args[1:], kwargs= kwargs, batcher= batcher).transform(args[0])
+	return wrapper_func
+
 def batch_transform(args):
 	f= args[1]
 	f_args= args[2]

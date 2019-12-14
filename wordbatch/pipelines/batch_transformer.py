@@ -16,8 +16,9 @@ class BatchTransformer(object):
 		self.call_fit= call_fit
 
 	def fit(self, data, input_split=False, batcher=None):
+		if batcher is None:  batcher = self.batcher
 		if self.call_fit:
-			if input_split:  self.transformer.fit(self.batcher.merge_batches(self.batcher.collect_batches(data)))
+			if input_split:  self.transformer.fit(batcher.merge_batches(batcher.collect_batches(data)))
 			else:  self.transformer.fit(data)
 		return self
 

@@ -361,27 +361,38 @@ class PandasHash:
 		self.col_salt= None
 		self.col_weight= None
 		self.col_pick= []
-		#self.col_type= []
+		self.dtype_specific= False
 		for key, value in kwargs.items():  setattr(self, key.lower(), value)
 		if self.col_salt is None:
 			self.col_salt = ["".join([z[0] for z in x.replace(" ", "_").replace("|", "_").split("_")])
 						for x in self.col_pick]
 		if self.col_weight is None:  self.col_weight = np.ones(len(self.col_pick))
-		#if self.col_type is None:  self.col_type = ["cat"]*len(self.col_pick)
+
 
 	def transform(self, df, y= None):
 		D= self.n_features
 		col_pick= self.col_pick
 		col_salt= self.col_salt
 		col_weight= self.col_weight
-
-		return indlist2csrmatrix(
+		if not (self.dtype_specific):
+			return indlist2csrmatrix(
 			#indlist=np.array([np.vectorize(lambda x: hash(x) % D)(df[col].astype(str)+y)
 			#				  for col, y in zip(col_pick, col_salt)]).T,
 			indlist= np.array([[murmurhash3_32(x + y) % D for x in df[col].astype(str)]
 							   for col, y in zip(col_pick, col_salt)]).T,
 								datalist= [col_weight] * len(df),
 								shape= (len(df), D))
+		return indlist2csrmatrix(
+			indlist = np.array([
+				[murmurhash3_32(y) % D] * len(df)
+				if df[col].dtypes.name == 'bool' or np.issubdtype(df[col].dtypes, np.floating) else
+				[murmurhash3_32(x + y) % D for x in df[col].astype(str)]
+				for col, y in zip(col_pick, col_salt)]).T,
+			datalist= col_weight * (np.array([
+				df[col] if df[col].dtypes.name == 'bool' or np.issubdtype(df[col].dtypes, np.floating) else
+				np.ones(len(df))
+				for col, y in zip(col_pick, col_salt)]).T),
+			shape = (len(df), D))
 
 	def fit(self, texts, y=None):
 		return self
