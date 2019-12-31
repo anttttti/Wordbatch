@@ -33,12 +33,13 @@ setup(
 		"License :: OSI Approved :: GNU General Public License v2 (GPLv2)",
 		"Programming Language :: Python :: 3.6",
 		"Programming Language :: Python :: 3.7",
+		"Programming Language :: Python :: 3.8",
 		"Programming Language :: Cython",
 		"Topic :: Scientific/Engineering :: Artificial Intelligence",
 		"Topic :: Software Development :: Libraries :: Python Modules",
 	],
-	install_requires=['Cython', 'scikit-learn', 'python-Levenshtein', 'py-lz4framed', 'randomgen', 'numpy', 'scipy',
-						  'pandas', 'wheel>=0.33.4'],
+	install_requires=['Cython', 'scikit-learn', 'python-Levenshtein', 'py-lz4framed', 'randomgen==1.16.6', 'numpy',
+	                  'scipy', 'pandas', 'wheel>=0.33.4'],
 	extras_require={'dev': ['nltk', 'textblob', 'keras', 'pyspark', 'dask', 'distributed', 'ray']},
 
 
