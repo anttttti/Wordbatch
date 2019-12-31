@@ -228,8 +228,9 @@ class Batcher(object):
 					return [batch[0]] + [task([batch[1]] + args)]
 				results = paral_params.map(apply_func_to_indexedrdd)
 			elif backend == "ray":
-				import ray
-				@ray.remote
+				#import ray
+				#@ray.remote
+				@self.backend_handle.remote
 				def f_ray(f, data):
 					return f(data)
 				results = [f_ray.remote(task, params) for params in paral_params]
