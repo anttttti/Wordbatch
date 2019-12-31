@@ -48,7 +48,7 @@ def normalize_text(text):
 print(len(texts))
 backends= [
 	###['multiprocessing', ""], #doesn't serialize lambda functions
-	['ray', ray]
+	['ray', ray],
 	['loky', ""],
 	['serial', ""],
 ]
