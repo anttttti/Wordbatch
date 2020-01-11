@@ -1,6 +1,5 @@
 name: wordbatch_dev
 channels:
-  - bioconda
   - conda-forge
   - defaults
 dependencies:
