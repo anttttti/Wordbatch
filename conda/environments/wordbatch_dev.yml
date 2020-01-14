@@ -1,0 +1,15 @@
+name: wordbatch_dev
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python>=3.6,<3.8
+  - numpy==1.17.4
+  - cython>=0.29,<0.30
+  - pip
+  - nltk==3.4.5
+  - textblob==0.13.0
+  - keras==2.3.1
+  - pyspark==2.4.0
+  - dask>=2.1.0
+  - distributed>=2.1.0
