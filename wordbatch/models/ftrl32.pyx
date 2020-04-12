@@ -17,7 +17,7 @@ cdef double inv_link_f(double e, int inv_link) nogil:
 	if inv_link==1:  return 1.0 / (1.0 + exp(-fmax(fmin(e, 35.0), -35.0))) #Sigmoid + logloss
 	return e
 
-cdef double predict_single_finalized(int* inds, double* vals, int lenn, double* w, bint bias_term, int threads) nogil:
+cdef double predict_single_finalized(int* inds, double* vals, int lenn, float* w, bint bias_term, int threads) nogil:
 	cdef int ii
 	cdef double e= 0.0
 	if bias_term:
@@ -27,7 +27,7 @@ cdef double predict_single_finalized(int* inds, double* vals, int lenn, double* 
 	return e
 
 cdef double predict_single(int* inds, double* vals, int lenn, double L1, double baL2, double ialpha, double beta,
-				double* w, double* z, double* n, bint bias_term, int threads) nogil:
+				float* w, float* z, float* n, bint bias_term, int threads) nogil:
 	cdef int i, ii
 	cdef double sign, zi, wi
 	cdef double e= 0.0
@@ -47,8 +47,8 @@ cdef double predict_single(int* inds, double* vals, int lenn, double L1, double 
 		else:  w[i]= 0.0
 	return e
 
-cdef void update_single(int* inds, double* vals, int lenn, double e, double ialpha, double* w, double* z,
-						double* n, bint bias_term, int threads) nogil:
+cdef void update_single(int* inds, double* vals, int lenn, double e, double ialpha, float* w, float* z,
+						float* n, bint bias_term, int threads) nogil:
 	cdef int i, ii
 	cdef double g, g2, ni
 	if bias_term:
@@ -66,10 +66,10 @@ cdef void update_single(int* inds, double* vals, int lenn, double e, double ialp
 		z[i]+= g - ((sqrt(ni + g2) - sqrt(ni)) * ialpha) * w[i]
 		n[i]+= g2
 
-cdef class FTRL:
-	cdef double[:] w
-	cdef double[:] z
-	cdef double[:] n
+cdef class FTRL32:
+	cdef float[:] w
+	cdef float[:] z
+	cdef float[:] n
 
 	cdef unsigned int threads
 	cdef unsigned int iters
@@ -121,13 +121,13 @@ cdef class FTRL:
 
 	def reset(self):
 		D= self.D
-		self.w = np.zeros((D+1,), dtype=np.float64)
+		self.w = np.zeros((D+1,), dtype=np.float32)
 		if self.init==0:
-			self.z = np.zeros((D+1,), dtype=np.float64)
+			self.z = np.zeros((D+1,), dtype=np.float32)
 		else:
 			rand= randomgen.xoroshiro128.Xoroshiro128(seed= self.seed).generator
-			self.z = (rand.random_sample(D+1) - 0.5) * self.init
-		self.n = np.zeros((D+1,), dtype=np.float64)
+			self.z = np.float32((rand.random_sample(D+1) - 0.5) * self.init)
+		self.n = np.zeros((D+1,), dtype=np.float32)
 		self.model_finalized= False
 
 	def predict(self, X, int threads= 0):
@@ -144,7 +144,7 @@ cdef class FTRL:
 					np.ndarray[int, ndim=1, mode='c'] X_indptr, int threads):
 		cdef double ialpha= 1.0/self.alpha, L1= self.L1, beta= self.beta, baL2= beta * ialpha + self.L2
 		p= np.zeros(X_indptr.shape[0]-1, dtype= np.float64)
-		cdef double *w= &self.w[0], *z= &self.z[0], *n= &self.n[0]
+		cdef float *w= &self.w[0], *z= &self.z[0], *n= &self.n[0]
 		cdef double[:] pp= p
 		cdef unsigned lenn, row_count= X_indptr.shape[0]-1, row, ptr
 		cdef bint bias_term= self.bias_term
@@ -186,7 +186,8 @@ cdef class FTRL:
 					sample_weight, int threads):
 		cdef double ialpha= 1.0/self.alpha, L1= self.L1, beta= self.beta, baL2= beta * ialpha + self.L2, e, e_total= 0,\
 					e_clip= self.e_clip, abs_e
-		cdef double *w= &self.w[0], *z= &self.z[0], *n= &self.n[0], *ys= <double*> y.data
+		cdef float *w= &self.w[0], *z= &self.z[0], *n= &self.n[0]
+		cdef double *ys= <double*> y.data
 		cdef int lenn, ptr, row_count= X_indptr.shape[0]-1, row, inv_link= self.inv_link, j=0, jj
 		cdef bint bias_term= self.bias_term
 		cdef int* inds, indptr

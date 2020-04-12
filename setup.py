@@ -13,7 +13,7 @@ else:
 
 setup(
 	name='Wordbatch',
-	version='1.4.4',
+	version='1.4.5',
 	description='Python library for distributed AI processing pipelines, using swappable scheduler backends',
 	url='https://github.com/anttttti/Wordbatch',
 	author='Antti Puurula',
@@ -39,7 +39,7 @@ setup(
 		"Topic :: Software Development :: Libraries :: Python Modules",
 	],
 	install_requires=['Cython', 'scikit-learn', 'python-Levenshtein', 'py-lz4framed', 'randomgen==1.16.6', 'numpy',
-	                  'scipy', 'pandas', 'wheel>=0.33.4'],
+					  'scipy', 'pandas', 'wheel>=0.33.4'],
 	extras_require={'dev': ['nltk', 'textblob', 'keras', 'pyspark', 'dask', 'distributed', 'ray']},
 
 
@@ -52,9 +52,15 @@ setup(
 							extra_link_args=extra_link_args),
 				  Extension("wordbatch.models.ftrl",
 							["wordbatch/models/ftrl.pyx"],
-							libraries= [],
+							libraries=[],
 							include_dirs=[numpy.get_include(), '.'],
-							extra_compile_args = extra_compile_args,
+							extra_compile_args=extra_compile_args,
+							extra_link_args=extra_link_args),
+				  Extension("wordbatch.models.ftrl32",
+							["wordbatch/models/ftrl32.pyx"],
+							libraries=[],
+							include_dirs=[numpy.get_include(), '.'],
+							extra_compile_args=extra_compile_args,
 							extra_link_args=extra_link_args),
 				  Extension("wordbatch.models.fm_ftrl",
 							["wordbatch/models/fm_ftrl.pyx", "wordbatch/models/avx_ext.c"],
