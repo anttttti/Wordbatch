@@ -1,6 +1,5 @@
 # cython: boundscheck=False, wraparound=False, cdivision=True
 import numpy as np
-import gzip
 cimport cython
 from cpython cimport array
 import scipy.sparse as ssp
@@ -8,7 +7,6 @@ cimport numpy as np
 from cython.parallel import prange
 from libc.math cimport exp, log, fmax, fmin, sqrt, fabs
 import multiprocessing
-import sys
 import randomgen
 
 np.import_array()
@@ -214,20 +212,20 @@ cdef class FTRL32:
 
 	def finalize_model(self):
 		D= self.D
-		indices = np.arange(start=0, stop=D+1, step=1, dtype=np.int32)
-		indptr= np.array([0, D+1], dtype=np.int32)
-		data = np.zeros((D+1,), dtype=np.float64)
+		indices = np.arange(start=0, stop=D, step=1, dtype=np.int32)
+		indptr= np.array([0, D], dtype=np.int32)
+		data = np.zeros(D, dtype=np.float64)
 		self.predict_f(data, indices, indptr, threads= self.threads)
 		del(indices, indptr, data)
-		self.z = None
-		self.n = None
+		self.z = np.zeros(0, dtype=np.float32)
+		self.n = np.zeros(0, dtype=np.float32)
 		self.model_finalized= True
 
 	def __getstate__(self):
 		return (self.alpha, self.beta, self.L1, self.L2, self.e_clip, self.D, self.init, self.seed, self.iters,
 				np.asarray(self.w), np.asarray(self.z), np.asarray(self.n), self.inv_link, self.threads, self.bias_term,
-				self.verbose)
+				self.model_finalized, self.verbose)
 
 	def __setstate__(self, params):
-		(self.alpha, self.beta, self.L1, self.L2, self.e_clip, self.D, self.init, self.seed,
-		 self.iters, self.w, self.z, self.n, self.inv_link, self.threads, self.bias_term, self.verbose)= params
+		(self.alpha, self.beta, self.L1, self.L2, self.e_clip, self.D, self.init, self.seed, self.iters, self.w,
+		self.z, self.n, self.inv_link, self.threads, self.bias_term, self.model_finalized, self.verbose)= params

@@ -8,9 +8,7 @@ import wordbatch.batcher
 
 def decorator_apply(func, batcher=None, cache=None, vectorize=None):
 	def wrapper_func(*args, **kwargs):
-		if len(args)>1:  argss= args[1]
-		else:  argss= []
-		return Apply(func, args=argss, kwargs= kwargs, batcher= batcher, cache= cache,
+		return Apply(func, args=args[1:], kwargs= kwargs, batcher= batcher, cache= cache,
 					vectorize= vectorize).transform(args[0])
 	return wrapper_func
 
