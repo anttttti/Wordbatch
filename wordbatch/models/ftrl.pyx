@@ -65,9 +65,9 @@ cdef void update_single(int* inds, double* vals, int lenn, double e, double ialp
 		n[i]+= g2
 
 cdef class FTRL:
-	cdef double[:] w
-	cdef double[:] z
-	cdef double[:] n
+	cdef const double[:] w
+	cdef const double[:] z
+	cdef const double[:] n
 
 	cdef unsigned int threads
 	cdef unsigned int iters

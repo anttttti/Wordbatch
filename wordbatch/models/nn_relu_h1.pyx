@@ -54,11 +54,11 @@ cdef void update_single(int* inds, double* vals, int lenn, int D, int D_nn, doub
 		c1[j]+= fabs(dldw1)
 
 cdef class NN_ReLU_H1:
-	cdef double[:] w0
-	cdef double[:] w1
-	cdef double[:] z
-	cdef double[:] c0
-	cdef double[:] c1
+	cdef const double[:] w0
+	cdef const double[:] w1
+	cdef const double[:] z
+	cdef const double[:] c0
+	cdef const double[:] c1
 
 	cdef unsigned int threads
 	cdef unsigned int iters

@@ -90,12 +90,12 @@ cdef void update_single(int* inds, double* vals, int lenn, double e, double ialp
 		n_fm[i] += e2
 
 cdef class FM_FTRL:
-	cdef double[:] w
-	cdef double[:] z
-	cdef double[:] n
-	cdef double[:] w_fm
-	cdef double[:] z_fm
-	cdef double[:] n_fm
+	cdef const double[:] w
+	cdef const double[:] z
+	cdef const double[:] n
+	cdef const double[:] w_fm
+	cdef const double[:] z_fm
+	cdef const double[:] n_fm
 
 	cdef unsigned int threads
 	cdef unsigned int iters

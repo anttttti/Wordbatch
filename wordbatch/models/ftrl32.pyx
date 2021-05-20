@@ -65,9 +65,9 @@ cdef void update_single(int* inds, double* vals, int lenn, double e, double ialp
 		n[i]+= g2
 
 cdef class FTRL32:
-	cdef float[:] w
-	cdef float[:] z
-	cdef float[:] n
+	cdef const float[:] w
+	cdef const float[:] z
+	cdef const float[:] n
 
 	cdef unsigned int threads
 	cdef unsigned int iters
