@@ -1,9 +1,19 @@
+#!python
 import pandas as pd
 from wordbatch.pipelines import Apply
+import wordbatch.batcher
+
+def decorator_apply_groupby(func, group, batcher=None, rows_per_bin=200, cache=None, vectorize=None):
+	def wrapper_func(*args, **kwargs):
+		return ApplyGroupBy(func, args=args[1:], kwargs=kwargs, group=group, rows_per_bin=rows_per_bin,
+							batcher=batcher, cache=cache, vectorize=vectorize).transform(args[0])
+	return wrapper_func
 
 class ApplyGroupBy(object):
-	def __init__(self, batcher, function, group, rows_per_bin= 200, cache=None, vectorize=None, args=[], kwargs={}):
-		self.batcher= batcher
+	def __init__(self, function, group, batcher=None, rows_per_bin= 200, cache=None, vectorize=None, args=[],
+				 kwargs={}):
+		if batcher is None:   self.batcher= wordbatch.batcher.Batcher()
+		else:  self.batcher= batcher
 		self.function= function
 		self.group= group
 		self.rows_per_bin = rows_per_bin

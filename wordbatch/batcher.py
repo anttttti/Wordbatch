@@ -39,19 +39,28 @@ class Batcher(object):
 
 			- 'ray' Ray local or distributed execution
 
+	task_num_cpus: int
+		Number of CPUs to reserve per minibatch task for Ray
+
+	task_num_gpus: int
+		Number of GPUs to reserve per minibatch task for Ray
+
 	backend_handle: object
 		Backend handle for sending tasks
 
 	verbose: int
 		Verbosity level. Setting verbose > 0 will display additional information depending on the specific level set.
 	"""
-	def __init__(self, procs= 0, minibatch_size= 20000, backend_handle= None, backend= "multiprocessing", verbose= 0):
+	def __init__(self, procs= 0, minibatch_size= 20000, backend_handle= None, backend= "multiprocessing",
+				 task_num_cpus= 1, task_num_gpus= 0, verbose= 0):
 		if procs==0:  procs= multiprocessing.cpu_count()
 		self.procs= procs
 		self.verbose= verbose
 		self.minibatch_size= minibatch_size
 		self.backend_handle= backend_handle
 		self.backend= backend
+		self.task_num_cpus = task_num_cpus
+		self.task_num_gpus = task_num_gpus
 
 	def list2indexedrdd(self, lst, minibatch_size=0):
 		if minibatch_size==0:  minibatch_size= self.minibatch_size
@@ -78,6 +87,9 @@ class Batcher(object):
 
 		minibatch_size: int
 			Expected sizes of minibatches split from the data.
+
+		backend: object
+			Backend to use, instead of the Batcher backend attribute
 
 		Returns
 		-------
@@ -125,7 +137,8 @@ class Batcher(object):
 		return [item for sublist in data for item in sublist]
 
 	def process_batches(self, task, data, args, backend=None, backend_handle=None, input_split=False,
-	                    merge_output= True, minibatch_size= None, procs=None, verbose= None):
+	                    merge_output= True, minibatch_size= None, procs=None, task_num_cpus= None,
+						task_num_gpus= None, verbose= None):
 		"""
 
 		Parameters
@@ -146,7 +159,8 @@ class Batcher(object):
 			If True, results from minibatches will be reduced into one single instance before return.
 
 		procs: int
-			Number of process(es)/thread(s) for executing task in parallel. Used for multiprocessing, threading and Loky
+			Number of process(es)/thread(s) for executing task in parallel. Used for multiprocessing, threading,
+			Loky and Ray
 
 		minibatch_size: int
 			Expected size of each minibatch
@@ -171,6 +185,12 @@ class Batcher(object):
 		backend_handle: object
 			Backend handle for sending tasks
 
+		task_num_cpus: int
+			Number of CPUs to reserve per minibatch task for Ray
+
+		task_num_gpus: int
+			Number of GPUs to reserve per minibatch task for Ray
+
 		verbose: int
 			Verbosity level. Setting verbose > 0 will display additional information depending on the specific level set.
 
@@ -184,6 +204,8 @@ class Batcher(object):
 		if procs is None:  procs= self.procs
 		if backend is None:  backend= self.backend
 		if backend_handle is None:  backend_handle = self.backend_handle
+		if task_num_cpus is None:  task_num_cpus = self.task_num_cpus
+		if task_num_gpus is None:  task_num_gpus = self.task_num_gpus
 		if verbose is None: verbose= self.verbose
 		if verbose > 1:
 			print("Task:", task, " backend:", backend, " backend_handle:", backend_handle, " procs:",
@@ -228,19 +250,27 @@ class Batcher(object):
 					return [batch[0]] + [task([batch[1]] + args)]
 				results = paral_params.map(apply_func_to_indexedrdd)
 			elif backend == "ray":
-				#import ray
-				#@ray.remote
-				@self.backend_handle.remote
+				@self.backend_handle.remote(num_cpus=task_num_cpus, num_gpus=task_num_gpus)
 				def f_ray(f, data):
 					return f(data)
-				results = [f_ray.remote(task, params) for params in paral_params]
-				results = [self.backend_handle.get(x) for x in results] #Slower, but handles edge cases
-				#results= self.backend_handle.get(results) #Faster, but crashes on edge cases?
-				#results = self.backend_handle.get([f_ray.remote(task, params) for params in paral_params])
+				results = [f_ray.remote(task, paral_params.pop(0)) for _ in range(min(len(paral_params), self.procs))]
+				uncompleted = results
+				while (len(paral_params) > 0):
+					# More tasks than available processors. Queue the task calls
+					done, remaining = self.backend_handle.wait(uncompleted, timeout=60, fetch_local=False)
+					if len(done) == 0: continue
+					done= done[0]
+					uncompleted = [x for x in uncompleted if x != done]
+					if len(remaining) > 0:
+						new = f_ray.remote(task, paral_params.pop(0))
+						uncompleted.append(new)
+						results.append(new)
+				results = [self.backend_handle.get(x) for x in results]
 			#ppft currently not supported. Supporting arbitrary tasks requires modifications to passed arguments
 			#elif backend == "ppft":
 			#   jobs = [self.backend_handle.submit(task, (x,), (), ()) for x in paral_params]
 			#	results = [x() for x in jobs]
+
 		if merge_output:  return self.merge_batches(self.collect_batches(results, backend=backend))
 		if verbose > 2:
 			print("Task:", task, " backend:", backend, " backend_handle:", backend_handle, " completed")
@@ -269,11 +299,11 @@ class Batcher(object):
 			List of shuffled labels. This will only be returned when non-None
 			labels is passed
 		"""
-		if seed!=None:  random.seed(seed)
+		if seed != None:  random.seed(seed)
 		index_shuf= list(range(len(texts)))
 		random.shuffle(index_shuf)
 		texts= [texts[x] for x in index_shuf]
-		if labels==None:  return texts
+		if labels == None:  return texts
 		labels= [labels[x] for x in index_shuf]
 		return texts, labels
 

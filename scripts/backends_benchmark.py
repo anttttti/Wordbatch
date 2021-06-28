@@ -10,10 +10,11 @@ import json
 from sklearn.feature_extraction.text import HashingVectorizer
 import warnings
 import pandas as pd
+import multiprocessing
 
 tripadvisor_dir= "../data/tripadvisor/json"
 
-#Configure below to allow Dask / Spark
+# Configure below to allow Dask / Spark
 # scheduler_ip= "169.254.93.14"
 # from dask.distributed import Client
 # #dask-scheduler --host 169.254.93.14
@@ -74,8 +75,8 @@ backends= [
 	['serial', ""],
 	['multiprocessing', ""],
 	['loky', ""],
-	#['dask', dask_client], #Uncomment once configured
-	#['spark', spark_context], #Uncomment once configured
+	# ['dask', dask_client], # Uncomment once configured
+	# ['spark', spark_context], # Uncomment once configured
 	['ray', ray]
 ]
 
@@ -91,7 +92,7 @@ for task in tasks:
 		texts_chunk = texts[:data_size]
 		print("Task:", task, "Data size:", data_size)
 		for backend in backends:
-			batcher = Batcher(procs=16, minibatch_size=5000, backend=backend[0], backend_handle=backend[1])
+			batcher = Batcher(procs=multiprocessing.cpu_count(), minibatch_size=5000, backend=backend[0], backend_handle=backend[1])
 			try:
 				with timer("Completed: ["+task+","+str(len(texts_chunk))+","+backend[0]+"]"), warnings.catch_warnings():
 					warnings.simplefilter("ignore")
@@ -103,13 +104,13 @@ for task in tasks:
 
 					if task=="WordBag":
 						wb = WordBatch(normalize_text=normalize_text,
-						               dictionary=Dictionary(min_df=10, max_words=1000000, verbose=0),
-						               tokenizer= Tokenizer(spellcor_count=2, spellcor_dist=2, stemmer= stemmer),
-						               extractor=WordBag(hash_ngrams=0, norm= 'l2', tf= 'binary', idf= 50.0),
-						               batcher= batcher,
-						               verbose= 0)
+									   dictionary=Dictionary(min_df=10, max_words=1000000, verbose=0),
+									   tokenizer= Tokenizer(spellcor_count=2, spellcor_dist=2, stemmer= stemmer),
+									   extractor=WordBag(hash_ngrams=0, norm= 'l2', tf= 'binary', idf= 50.0),
+									   batcher= batcher,
+									   verbose= 0)
 						t = wb.fit_transform(texts_chunk)
 						print(t.shape, t.data[:5])
 			except:
-			 	print("Failed ["+task+","+str(len(texts_chunk))+","+backend[0]+"]")
+				print("Failed: ["+task+","+str(len(texts_chunk))+","+backend[0]+"]")
 		print("")

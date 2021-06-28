@@ -8,8 +8,8 @@ import wordbatch.batcher
 
 def decorator_apply(func, batcher=None, cache=None, vectorize=None):
 	def wrapper_func(*args, **kwargs):
-		return Apply(func, args=args[1:], kwargs= kwargs, batcher= batcher, cache= cache,
-					vectorize= vectorize).transform(args[0])
+		return Apply(func, args=args[1:], kwargs=kwargs, batcher=batcher, cache=cache, vectorize=vectorize)\
+			.transform(args[0])
 	return wrapper_func
 
 def batch_transform(args):
