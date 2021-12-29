@@ -127,9 +127,9 @@ cdef class NN_ReLU_H2:
 		D= self.D
 		D_nn = self.D_nn
 		D_nn2 = self.D_nn2
-		rand= randomgen.xoroshiro128.Xoroshiro128(seed= self.seed).generator
-		self.w0 = (rand.rand((D + 1) * D_nn) - 0.5) * init_nn
-		self.w1 = (rand.rand((D_nn + 1) * D_nn2) - 0.3) * init_nn
+		rand= np.random.Generator(randomgen.xoroshiro128.Xoroshiro128(seed= self.seed))
+		self.w0 = (rand.random((D + 1) * D_nn) - 0.5) * init_nn
+		self.w1 = (rand.random((D_nn + 1) * D_nn2) - 0.3) * init_nn
 		self.w2 = (rand.rand(D_nn2 + 1) - 0.5) * init_nn
 		self.z1= np.zeros((D_nn,), dtype=np.float64)
 		self.z2= np.zeros((D_nn2,), dtype=np.float64)
@@ -187,8 +187,7 @@ cdef class NN_ReLU_H2:
 							row, inv_link= self.inv_link, j=0, jj
 		cdef int* inds, indptr
 		cdef double* vals
-		rand = randomgen.xoroshiro128.Xoroshiro128(seed=seed).generator
-
+		rand= np.random.Generator(randomgen.xoroshiro128.Xoroshiro128(seed= self.seed))
 		for iter in range(self.iters):
 			e_total= 0.0
 			for row in range(row_count):

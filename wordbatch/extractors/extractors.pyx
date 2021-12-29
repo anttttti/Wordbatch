@@ -363,11 +363,10 @@ class PandasHash:
 		self.col_pick= []
 		self.dtype_specific= False
 		for key, value in kwargs.items():  setattr(self, key.lower(), value)
-		if self.col_salt is None:
+		if self.col_salt is None or len(self.col_salt) == 0:
 			self.col_salt = ["".join([z[0] for z in x.replace(" ", "_").replace("|", "_").split("_")])
 						for x in self.col_pick]
-		if self.col_weight is None:  self.col_weight = np.ones(len(self.col_pick))
-
+		if self.col_weight is None or len(self.col_weight) == 0:  self.col_weight = np.ones(len(self.col_pick))
 
 	def transform(self, df, y= None):
 		D= self.n_features

@@ -27,6 +27,7 @@ if backend == "ray":
 if backend == "multiprocessing":
 	b = Batcher(backend="multiprocessing", minibatch_size=minibatch_size)
 
+# http://sifaka.cs.uiuc.edu/~wang296/Data/LARA/TripAdvisor/
 tripadvisor_dir= "../data/tripadvisor/json"
 if __name__ == "__main__":
 	start_time= time.time()

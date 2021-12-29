@@ -168,8 +168,8 @@ cdef class FM_FTRL:
 		self.z = np.zeros((D+1), dtype=np.float64)
 		self.n = np.zeros((D+1), dtype=np.float64)
 		self.w_fm = np.zeros(D_fm, dtype=np.float64)
-		rand= randomgen.xoroshiro128.Xoroshiro128(seed= self.seed).generator
-		self.z_fm = (rand.random_sample(D * D_fm) - 0.5) * self.init_fm
+		rand= np.random.Generator(randomgen.xoroshiro128.Xoroshiro128(seed= self.seed))
+		self.z_fm = (rand.random(D * D_fm) - 0.5) * self.init_fm
 		self.n_fm = np.zeros(D+1, dtype=np.float64)
 
 	def predict(self, X, int threads= 0):
@@ -244,8 +244,7 @@ cdef class FM_FTRL:
 		cdef bint bias_term= self.bias_term
 		cdef int* inds, indptr
 		cdef double* vals
-
-		rand = randomgen.xoroshiro128.Xoroshiro128(seed=seed).generator
+		rand= np.random.Generator(randomgen.xoroshiro128.Xoroshiro128(seed= self.seed))
 		for iter in range(self.iters):
 			e_total= 0.0
 			for row in range(row_count):
@@ -267,7 +266,7 @@ cdef class FM_FTRL:
 
 				abs_e= fabs(e)
 				e_total+= abs_e
-				e += (rand.rand() - 0.5) * e_noise
+				e += (rand.random() - 0.5) * e_noise
 				if abs_e> e_clip:
 					if e>0:  e= e_clip
 					else:  e= -e_clip

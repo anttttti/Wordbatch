@@ -8,24 +8,22 @@ if os.name == 'nt':
 	extra_compile_args = ["/openmp", "/Ox", "/arch:AVX2", "/fp:fast"]
 	extra_link_args = []
 else:
-	extra_compile_args = ["-O3", "-fopenmp", "-ffast-math", "-mavx2", "-march=native", "-ftree-vectorize", "-std=gnu11"]
+	extra_compile_args = ["-O3", "-fopenmp", "-ffast-math", "-mavx2", "-ftree-vectorize", "-std=gnu11"]
 	extra_link_args = ["-fopenmp"]
 
 setup(
 	name='Wordbatch',
-	version='1.4.8',
+	version='1.4.9',
 	description='Python library for distributed AI processing pipelines, using swappable scheduler backends',
 	url='https://github.com/anttttti/Wordbatch',
 	author='Antti Puurula',
 	author_email='antti.puurula@yahoo.com',
-
 	packages=['wordbatch',
 			  'wordbatch.pipelines',
 			  'wordbatch.extractors',
 			  'wordbatch.models',
 			  'wordbatch.transformers'
 	],
-
 	license='GNU GPL 2.0',
 	classifiers=[
 		"Development Status :: 4 - Beta",
@@ -34,17 +32,19 @@ setup(
 		"Programming Language :: Python :: 3.6",
 		"Programming Language :: Python :: 3.7",
 		"Programming Language :: Python :: 3.8",
+		"Programming Language :: Python :: 3.9",
+		"Programming Language :: Python :: 3.10",
 		"Programming Language :: Cython",
 		"Topic :: Scientific/Engineering :: Artificial Intelligence",
 		"Topic :: Software Development :: Libraries :: Python Modules",
 	],
-	install_requires=['Cython', 'scikit-learn', 'python-Levenshtein', 'py-lz4framed', 'randomgen==1.16.6', 'numpy',
+	install_requires=['Cython', 'scikit-learn', 'python-Levenshtein', 'py-lz4framed', 'randomgen==1.21.2', 'numpy',
 					  'scipy', 'pandas', 'wheel>=0.33.4'],
 	extras_require={'dev': ['nltk', 'textblob', 'keras', 'pyspark', 'dask', 'distributed', 'ray']},
 
-
 	cmdclass= {'build_ext': build_ext},
-	ext_modules= [Extension("wordbatch.extractors.extractors",
+	ext_modules= [
+				  Extension("wordbatch.extractors.extractors",
 							["wordbatch/extractors/extractors.pyx", "wordbatch/extractors/MurmurHash3.cpp"],
 							libraries= [],
 							include_dirs=[numpy.get_include(), '.'],

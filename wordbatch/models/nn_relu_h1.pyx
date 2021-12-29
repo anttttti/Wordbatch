@@ -108,9 +108,9 @@ cdef class NN_ReLU_H1:
 		init_nn= self.init_nn
 		D= self.D
 		D_nn= self.D_nn
-		rand= randomgen.xoroshiro128.Xoroshiro128(seed= self.seed).generator
-		self.w0 = (rand.rand((D + 1) * D_nn) - 0.5) * init_nn
-		self.w1 = (rand.rand(D_nn + 1) - 0.5) * init_nn
+		rand= np.random.Generator(randomgen.xoroshiro128.Xoroshiro128(seed= self.seed))
+		self.w0 = (rand.random((D + 1) * D_nn) - 0.5) * init_nn
+		self.w1 = (rand.random(D_nn + 1) - 0.5) * init_nn
 		self.z = np.zeros((D_nn,), dtype=np.float64)
 		self.c0 = np.zeros((D,), dtype=np.float64)
 		self.c1 = np.zeros((D_nn,), dtype=np.float64)
@@ -169,8 +169,7 @@ cdef class NN_ReLU_H1:
 																			inv_link= self.inv_link, j=0, jj
 		cdef int* inds, indptr
 		cdef double* vals
-		rand= randomgen.xoroshiro128.Xoroshiro128(seed= seed).generator
-
+		rand= np.random.Generator(randomgen.xoroshiro128.Xoroshiro128(seed= self.seed))
 		for iter in range(self.iters):
 			e_total= 0.0
 			for row in range(row_count):
@@ -181,7 +180,7 @@ cdef class NN_ReLU_H1:
 				e= inv_link_f(predict_single(inds, vals, lenn, D, D_nn, w0, w1, z, threads), self.inv_link) -ys[row]
 				abs_e= fabs(e)
 				e_total+= abs_e
-				e += (rand.rand() - 0.5) * e_noise
+				e += (rand.random() - 0.5) * e_noise
 				if abs_e> e_clip:
 					if e>0:  e= e_clip
 					else:  e= -e_clip

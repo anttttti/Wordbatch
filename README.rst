@@ -1,5 +1,5 @@
 ===============
-Wordbatch 1.4.8
+Wordbatch 1.4.9
 ===============
 
 Overview

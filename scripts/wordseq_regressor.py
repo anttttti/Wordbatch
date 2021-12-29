@@ -9,16 +9,16 @@ import os
 import json
 import scipy as sp
 import numpy as np
-from keras.layers import *
-from keras.models import Sequential
+from tensorflow.keras.layers import *
+from tensorflow.keras.models import Sequential
 from wordbatch.pipelines import WordBatch
 from wordbatch.extractors import WordSeq
 from wordbatch.transformers import Dictionary
 import random
 import threading
-from keras.models import load_model
+from tensorflow.keras.models import load_model
 import tensorflow as tf
-import multiprocessing
+import sys
 
 non_alphas = re.compile('[^A-Za-z\'-]+')
 trash_re= [re.compile("<[^>]*>"), re.compile("[^a-z0-9' -]+"), re.compile(" [.0-9'-]+ "),
@@ -38,13 +38,10 @@ class BatchData(object):
 class WordseqRegressor():
     def __init__(self, pickle_model="", datadir=None, batcher= None):
         seed = 10002
-        session_conf = tf.ConfigProto(intra_op_parallelism_threads=multiprocessing.cpu_count()//2,
-                                      inter_op_parallelism_threads=1)
         os.environ['PYTHONHASHSEED'] = str(seed)
         np.random.seed(seed + 1)
         random.seed(seed + 2)
-        tf.set_random_seed(seed+3)
-        K.set_session(tf.Session(graph=tf.get_default_graph(), config=session_conf))
+        tf.random.set_seed(seed+3)
 
         self.maxlen = 200
         self.max_words = 20000
@@ -108,7 +105,7 @@ class WordseqRegressor():
 
         self.model.fit(train[0], train[1], batch_size=2048, epochs=2, validation_data=(test[0], test[1]))
         if pickle_model != "":
-            self.model.save(pickle_model)
+            self.model.save_weights(pickle_model)
             backend = self.wb.batcher.backend
             backend_handle = self.wb.batcher.backend_handle
             self.wb.batcher.backend = "serial"

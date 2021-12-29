@@ -12,6 +12,7 @@ import warnings
 import pandas as pd
 import multiprocessing
 
+# http://sifaka.cs.uiuc.edu/~wang296/Data/LARA/TripAdvisor/
 tripadvisor_dir= "../data/tripadvisor/json"
 
 # Configure below to allow Dask / Spark

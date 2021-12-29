@@ -53,7 +53,7 @@ class Batcher(object):
 	"""
 	def __init__(self, procs= 0, minibatch_size= 20000, backend_handle= None, backend= "multiprocessing",
 				 task_num_cpus= 1, task_num_gpus= 0, verbose= 0):
-		if procs==0:  procs= multiprocessing.cpu_count()
+		if procs == 0 or procs is None:  procs= multiprocessing.cpu_count()
 		self.procs= procs
 		self.verbose= verbose
 		self.minibatch_size= minibatch_size
@@ -209,7 +209,7 @@ class Batcher(object):
 		if verbose is None: verbose= self.verbose
 		if verbose > 1:
 			print("Task:", task, " backend:", backend, " backend_handle:", backend_handle, " procs:",
-		      self.procs, " input_split:", input_split, " merge_output:", merge_output)
+		      procs, " input_split:", input_split, " merge_output:", merge_output)
 
 		if verbose> 10:
 			print("len(data):", len(data), "len(args):", len(args), "[type(x) for x in data]:",
